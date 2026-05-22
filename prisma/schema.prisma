@@ -1,0 +1,78 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Account {
+  id             String    @id @default(cuid())
+  hubspotId      String    @unique @map("hubspot_id")
+  overgradId     String?   @map("overgrad_id")
+  name           String
+  owner          String?
+  ownerEmail     String?   @map("owner_email")
+  renewalDate    DateTime? @map("renewal_date")
+  dealStage      String?   @map("deal_stage")
+  arr            Float?
+  primaryContact String?   @map("primary_contact")
+  contactEmail   String?   @map("contact_email")
+  hasLineItems   Boolean   @default(false) @map("has_line_items")
+  onboardingDate DateTime? @map("onboarding_date")
+  isOnboarding   Boolean   @default(false) @map("is_onboarding")
+  championStatus              String?   @map("champion_status")
+  // Scoring inputs sourced from HubSpot (ported from Admin Console)
+  studentsCompletedSetupPct   Float?    @map("students_completed_setup_pct")
+  milestoneCompletionPct      Float?    @map("milestone_completion_pct")
+  lastDataUploadDate          DateTime? @map("last_data_upload_date")
+  totalLicensedSeats          Int?      @map("total_licensed_seats")
+  // Scoring inputs populated by PostHog sync (Milestone 3)
+  wauEducators                Int?      @map("wau_educators")
+  wauStudents                 Int?      @map("wau_students")
+  // Scoring inputs populated by Freshdesk/Granola sync (Milestone 4)
+  lastCsTouchpoint            DateTime? @map("last_cs_touchpoint")
+  lastCustomerContact         DateTime? @map("last_customer_contact")
+  ticketVolumeTrend           String?   @map("ticket_volume_trend")
+  ticketSentiment             String?   @map("ticket_sentiment")
+  meetingSentiment            String?   @map("meeting_sentiment")
+  aiSentimentSummary          String?   @map("ai_sentiment_summary")
+  createdAt                   DateTime  @default(now()) @map("created_at")
+  updatedAt                   DateTime  @updatedAt @map("updated_at")
+
+  scoreHistory ScoreHistory[]
+  alerts       Alert[]
+
+  @@map("accounts")
+}
+
+model ScoreHistory {
+  id                     String   @id @default(cuid())
+  accountId              String   @map("account_id")
+  week                   DateTime
+  usageScore             Float?   @map("usage_score")
+  interactionsScore      Float?   @map("interactions_score")
+  usageComponents        Json?    @map("usage_components")
+  interactionsComponents Json?    @map("interactions_components")
+  createdAt              DateTime @default(now()) @map("created_at")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, week])
+  @@map("score_history")
+}
+
+model Alert {
+  id             String    @id @default(cuid())
+  accountId      String    @map("account_id")
+  triggerType    String    @map("trigger_type")
+  triggeredAt    DateTime  @default(now()) @map("triggered_at")
+  dismissedAt    DateTime? @map("dismissed_at")
+  snoozedUntil   DateTime? @map("snoozed_until")
+  slackMessageTs String?   @map("slack_message_ts")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@map("alerts")
+}
