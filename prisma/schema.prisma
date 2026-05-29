@@ -9,7 +9,8 @@ datasource db {
 
 model Account {
   id             String    @id @default(cuid())
-  hubspotId      String    @unique @map("hubspot_id")
+  companyId      String?   @unique @map("company_id")  // HubSpot company ID — primary sync key
+  hubspotId      String?   @map("hubspot_id")           // Primary deal ID
   overgradId     String?   @map("overgrad_id")
   name           String
   owner          String?

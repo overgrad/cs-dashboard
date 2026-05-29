@@ -16,14 +16,14 @@ export async function POST(request: Request) {
       select: { id: true, hubspotId: true, name: true },
     })
 
-    const dealIds = accounts.map((a) => a.hubspotId)
+    const dealIds = accounts.map((a) => a.hubspotId).filter((id): id is string => id !== null)
     const notesByDeal = await getNotesForDeals(dealIds)
 
     let updated = 0
     let sentimentScored = 0
 
     for (const account of accounts) {
-      const notes = notesByDeal.get(account.hubspotId)
+      const notes = account.hubspotId ? notesByDeal.get(account.hubspotId) : undefined
       if (!notes || notes.length === 0) continue
 
       const lastCsTouchpoint = notes[0].timestamp // already sorted newest first

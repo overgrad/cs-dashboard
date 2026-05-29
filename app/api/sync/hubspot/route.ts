@@ -1,9 +1,38 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getAllDeals, getOwner, getContact, getRenewalsPipelineInfo, getDealsWithLineItems, getCompanyData } from '@/lib/hubspot'
+import { getAllDeals, getOwner, getContact, getRenewalsPipelineInfo, getDealsWithLineItems, getCompanyData, type CompanyData } from '@/lib/hubspot'
 import { HS_PROPS } from '@/lib/config'
 
-// POST /api/sync/hubspot — pulls all deals from HubSpot and upserts into accounts
+type Deal = Awaited<ReturnType<typeof getAllDeals>>[number]
+
+// Pick the deal closest to today, preferring upcoming over past renewals
+function pickPrimaryDeal(deals: Deal[]): Deal {
+  const now = Date.now()
+  return deals.reduce((best, deal) => {
+    const bestMs = best.properties[HS_PROPS.CLOSE_DATE]
+      ? new Date(best.properties[HS_PROPS.CLOSE_DATE]!).getTime() : null
+    const dealMs = deal.properties[HS_PROPS.CLOSE_DATE]
+      ? new Date(deal.properties[HS_PROPS.CLOSE_DATE]!).getTime() : null
+    const bestUpcoming = bestMs !== null && bestMs > now
+    const dealUpcoming = dealMs !== null && dealMs > now
+    if (dealUpcoming && !bestUpcoming) return deal
+    if (!dealUpcoming && bestUpcoming) return best
+    const bestDist = bestMs !== null ? Math.abs(bestMs - now) : Infinity
+    const dealDist = dealMs !== null ? Math.abs(dealMs - now) : Infinity
+    return dealDist < bestDist ? deal : best
+  })
+}
+
+const EMPTY_COMPANY: Omit<CompanyData, 'companyId'> = {
+  overgradId: null,
+  studentsCompletedSetupPct: null,
+  careerMilestoneCompletionPct: null,
+  collegeMilestoneCompletionPct: null,
+  commonAppLinking: null,
+  lastDataUploadDate: null,
+}
+
+// POST /api/sync/hubspot — pulls all deals, groups by company, upserts one row per company
 export async function POST(request: Request) {
   const authHeader = request.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.SYNC_SECRET}`) {
@@ -14,27 +43,43 @@ export async function POST(request: Request) {
     const pipelineInfo = await getRenewalsPipelineInfo()
     const deals = await getAllDeals(pipelineInfo?.pipelineId)
     const dealIds = deals.map((d) => d.id)
+
     const [dealsWithLineItems, companyDataMap] = await Promise.all([
       getDealsWithLineItems(dealIds),
       getCompanyData(dealIds),
     ])
-    const ownerCache = new Map<string, { name: string; email: string | undefined } | null>()
 
-    const syncedHubspotIds: string[] = []
+    // Group deals by company ID (orphan deals use their own deal ID as key)
+    const companiesMap = new Map<string, { companyData: CompanyData; deals: Deal[] }>()
+    for (const deal of deals) {
+      const cd = companyDataMap.get(deal.id)
+      const key = cd?.companyId ?? `deal_${deal.id}`
+      if (!companiesMap.has(key)) {
+        companiesMap.set(key, {
+          companyData: cd ?? { companyId: key, ...EMPTY_COMPANY },
+          deals: [],
+        })
+      }
+      companiesMap.get(key)!.deals.push(deal)
+    }
+
+    const ownerCache = new Map<string, { name: string; email: string | undefined } | null>()
+    const syncedCompanyIds: string[] = []
     let synced = 0
     let errors = 0
 
-    for (const deal of deals) {
+    for (const [companyId, { companyData, deals }] of companiesMap) {
       try {
-        const p = deal.properties
-        const ownerId = p[HS_PROPS.OWNER_ID] ?? ''
+        const primary = pickPrimaryDeal(deals)
+        const p = primary.properties
 
+        const ownerId = p[HS_PROPS.OWNER_ID] ?? ''
         if (!ownerCache.has(ownerId)) {
           ownerCache.set(ownerId, ownerId ? await getOwner(ownerId) : null)
         }
         const owner = ownerCache.get(ownerId) ?? null
 
-        const contactId = deal.associations?.contacts?.results?.[0]?.id
+        const contactId = primary.associations?.contacts?.results?.[0]?.id
         const contact = contactId ? await getContact(contactId) : null
 
         const onboardingDateRaw = p[HS_PROPS.ONBOARDING_DATE]
@@ -44,10 +89,10 @@ export async function POST(request: Request) {
           : false
 
         const seatsRaw = p[HS_PROPS.TOTAL_LICENSED_SEATS]
-        const company = companyDataMap.get(deal.id) ?? null
 
         const fields = {
-          overgradId: company?.overgradId ?? null,
+          hubspotId: primary.id,
+          overgradId: companyData.overgradId,
           name: p[HS_PROPS.DEAL_NAME] ?? 'Unnamed',
           owner: owner?.name ?? null,
           ownerEmail: owner?.email ?? null,
@@ -56,32 +101,38 @@ export async function POST(request: Request) {
           arr: p[HS_PROPS.AMOUNT] ? parseFloat(p[HS_PROPS.AMOUNT]!) : null,
           primaryContact: contact?.name ?? null,
           contactEmail: contact?.email ?? null,
-          hasLineItems: dealsWithLineItems.has(deal.id),
+          hasLineItems: deals.some((d) => dealsWithLineItems.has(d.id)),
           onboardingDate,
           isOnboarding,
           totalLicensedSeats: seatsRaw ? parseInt(seatsRaw) : null,
-          studentsCompletedSetupPct: company?.studentsCompletedSetupPct ?? null,
-          careerMilestoneCompletionPct: company?.careerMilestoneCompletionPct ?? null,
-          collegeMilestoneCompletionPct: company?.collegeMilestoneCompletionPct ?? null,
-          commonAppLinking: company?.commonAppLinking ?? null,
-          lastDataUploadDate: company?.lastDataUploadDate ?? null,
+          studentsCompletedSetupPct: companyData.studentsCompletedSetupPct,
+          careerMilestoneCompletionPct: companyData.careerMilestoneCompletionPct,
+          collegeMilestoneCompletionPct: companyData.collegeMilestoneCompletionPct,
+          commonAppLinking: companyData.commonAppLinking,
+          lastDataUploadDate: companyData.lastDataUploadDate,
         }
 
-        await prisma.account.upsert({
-          where: { hubspotId: deal.id },
-          create: { hubspotId: deal.id, ...fields },
-          update: fields,
-        })
-        syncedHubspotIds.push(deal.id)
+        const existing = await prisma.account.findUnique({ where: { companyId } })
+        if (existing) {
+          await prisma.account.update({ where: { companyId }, data: fields })
+        } else {
+          await prisma.account.create({ data: { companyId, ...fields } })
+        }
+        syncedCompanyIds.push(companyId)
         synced++
       } catch {
         errors++
       }
     }
 
-    // Remove any accounts that are no longer in the Renewals Pipeline
+    // Remove companies no longer in the renewals pipeline, plus any old deal-keyed rows
     const deleted = await prisma.account.deleteMany({
-      where: { hubspotId: { notIn: syncedHubspotIds } },
+      where: {
+        OR: [
+          { companyId: { notIn: syncedCompanyIds } },
+          { companyId: null },
+        ],
+      },
     })
 
     return NextResponse.json({
@@ -89,6 +140,7 @@ export async function POST(request: Request) {
       errors,
       deleted: deleted.count,
       total: deals.length,
+      companies: companiesMap.size,
       debug: {
         pipelineFound: !!pipelineInfo,
         pipelineId: pipelineInfo?.pipelineId ?? null,
