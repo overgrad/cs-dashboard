@@ -52,7 +52,6 @@ export async function POST(request: Request) {
       dealsWithNotes: notesByDeal.size,
       updated,
       sentimentScored,
-      sentimentEnabled: !!process.env.ANTHROPIC_API_KEY,
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error'

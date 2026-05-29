@@ -29,7 +29,9 @@ export async function POST(request: Request) {
     let skipped = 0
 
     for (const account of accounts) {
-      const districtTickets = byDistrict.get(account.overgradId!) ?? []
+      // HubSpot stores "District_13938" or "HighSchool_35427"; Freshdesk stores just "13938"
+      const numericId = account.overgradId!.replace(/^[^_]+_/, '')
+      const districtTickets = byDistrict.get(numericId) ?? []
 
       if (districtTickets.length === 0) {
         skipped++
@@ -50,11 +52,15 @@ export async function POST(request: Request) {
       updated++
     }
 
+    const sampleFreshdeskIds = [...byDistrict.keys()].slice(0, 5)
+    const sampleOvergradIds = accounts.map((a) => a.overgradId).filter(Boolean).slice(0, 5)
+
     return NextResponse.json({
       ticketsFetched: tickets.length,
       accountsWithTickets: byDistrict.size,
       updated,
       skipped,
+      debug: { sampleFreshdeskIds, sampleOvergradIds },
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error'
