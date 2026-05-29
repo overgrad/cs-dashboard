@@ -58,6 +58,87 @@ async function getMeetingsByIds(meetingIds: string[]): Promise<Map<string, DealN
   return map
 }
 
+export interface CompanyEmails {
+  lastOutgoing: Date | null  // CS → customer
+  lastIncoming: Date | null  // customer → CS
+}
+
+async function getEmailsByIds(
+  emailIds: string[]
+): Promise<Map<string, { timestamp: Date; direction: string }>> {
+  const map = new Map<string, { timestamp: Date; direction: string }>()
+  for (let i = 0; i < emailIds.length; i += chunkSize) {
+    const chunk = emailIds.slice(i, i + chunkSize)
+    try {
+      const response = await hubspotClient.crm.objects.emails.batchApi.read({
+        inputs: chunk.map((id) => ({ id })),
+        properties: ['hs_timestamp', 'hs_email_direction'],
+        propertiesWithHistory: [],
+      })
+      for (const email of response.results) {
+        const p = email.properties ?? {}
+        map.set(email.id, {
+          timestamp: p.hs_timestamp ? new Date(p.hs_timestamp) : new Date(email.createdAt),
+          direction: String(p.hs_email_direction ?? ''),
+        })
+      }
+    } catch {
+      // skip chunk on error
+    }
+  }
+  return map
+}
+
+// Returns the most recent outgoing (CS→customer) and incoming (customer→CS) email per company.
+// Checks both direct company→email associations and the two-hop company→contact→email path.
+export async function getEmailsForCompanies(
+  companyIds: string[]
+): Promise<Map<string, CompanyEmails>> {
+  if (companyIds.length === 0) return new Map()
+
+  const emailsByCompany = await batchAssociations('companies', 'emails', companyIds)
+
+  const contactsByCompany = await batchAssociations('companies', 'contacts', companyIds)
+  const allContactIds = [...new Set([...contactsByCompany.values()].flat())]
+  const emailsByContact =
+    allContactIds.length > 0
+      ? await batchAssociations('contacts', 'emails', allContactIds)
+      : new Map<string, string[]>()
+
+  const emailIdsByCompany = new Map<string, Set<string>>()
+  for (const companyId of companyIds) {
+    const set = new Set<string>()
+    for (const eid of emailsByCompany.get(companyId) ?? []) set.add(eid)
+    for (const cid of contactsByCompany.get(companyId) ?? []) {
+      for (const eid of emailsByContact.get(cid) ?? []) set.add(eid)
+    }
+    if (set.size > 0) emailIdsByCompany.set(companyId, set)
+  }
+
+  const allEmailIds = [...new Set([...emailIdsByCompany.values()].flatMap((s) => [...s]))]
+  if (allEmailIds.length === 0) return new Map()
+
+  const emailsById = await getEmailsByIds(allEmailIds)
+
+  const result = new Map<string, CompanyEmails>()
+  for (const [companyId, emailIds] of emailIdsByCompany) {
+    let lastOutgoing: Date | null = null
+    let lastIncoming: Date | null = null
+    for (const eid of emailIds) {
+      const email = emailsById.get(eid)
+      if (!email) continue
+      const isIncoming = email.direction.toUpperCase().includes('INCOMING')
+      if (isIncoming) {
+        if (!lastIncoming || email.timestamp > lastIncoming) lastIncoming = email.timestamp
+      } else {
+        if (!lastOutgoing || email.timestamp > lastOutgoing) lastOutgoing = email.timestamp
+      }
+    }
+    result.set(companyId, { lastOutgoing, lastIncoming })
+  }
+  return result
+}
+
 // For each deal ID, return meeting notes from both the deal and its associated company (sorted newest first)
 export async function getNotesForDeals(
   dealIds: string[]

@@ -22,14 +22,14 @@ export const HS_PROPS = {
   LAST_DATA_UPLOAD_DATE: 'date_of_last_data_upload',
 } as const
 
-// Scoring thresholds — matches spec section 2a/2b exactly
+// Scoring thresholds — calibrated against ~95% renewal baseline
 export const THRESHOLDS = {
   WAU_PCT_GREEN: 30,
-  WAU_PCT_YELLOW: 24,
-  COMPLETION_PCT_GREEN: 80,
-  COMPLETION_PCT_YELLOW: 50,
-  RECENCY_GREEN_MONTHS: 1,
-  RECENCY_YELLOW_MONTHS: 6,
+  WAU_PCT_YELLOW: 15,
+  COMPLETION_PCT_GREEN: 70,   // was 80 — 80 is aspirational, 70 is healthy adoption
+  COMPLETION_PCT_YELLOW: 40,  // was 50
+  RECENCY_GREEN_MONTHS: 2,    // was 1 — quarterly CS cadence is normal for healthy accounts
+  RECENCY_YELLOW_MONTHS: 9,   // was 6 — 9 months without contact = genuinely at risk
   SCORE_DROP_ALERT_PTS: 10,
   NO_ACTIVITY_ALERT_DAYS: 60,
   NO_USAGE_ALERT_DAYS: 30,

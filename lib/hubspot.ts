@@ -105,7 +105,9 @@ export async function getDealsWithLineItems(dealIds: string[]): Promise<Set<stri
 
 export interface CompanyData {
   companyId: string
+  companyName: string | null
   overgradId: string | null
+  lifecycleStage: string | null
   studentsCompletedSetupPct: number | null
   careerMilestoneCompletionPct: number | null
   collegeMilestoneCompletionPct: number | null
@@ -114,6 +116,8 @@ export interface CompanyData {
 }
 
 const COMPANY_PROPERTIES = [
+  'name',
+  'lifecyclestage',
   HS_PROPS.OVERGRAD_ID,
   HS_PROPS.STUDENTS_COMPLETED_SETUP_PCT,
   HS_PROPS.CAREER_MILESTONE_PCT,
@@ -165,6 +169,8 @@ export async function getCompanyData(dealIds: string[]): Promise<Map<string, Com
         const parseDate = (v: unknown) => (v ? new Date(String(v)) : null)
         companyDataMap.set(String(company.id), {
           companyId: String(company.id),
+          companyName: p['name'] ?? null,
+          lifecycleStage: p['lifecyclestage'] ?? null,
           overgradId: p[HS_PROPS.OVERGRAD_ID] ?? null,
           studentsCompletedSetupPct: parseFloat_(p[HS_PROPS.STUDENTS_COMPLETED_SETUP_PCT]),
           careerMilestoneCompletionPct: parseFloat_(p[HS_PROPS.CAREER_MILESTONE_PCT]),

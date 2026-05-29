@@ -24,6 +24,8 @@ function pickPrimaryDeal(deals: Deal[]): Deal {
 }
 
 const EMPTY_COMPANY: Omit<CompanyData, 'companyId'> = {
+  companyName: null,
+  lifecycleStage: null,
   overgradId: null,
   studentsCompletedSetupPct: null,
   careerMilestoneCompletionPct: null,
@@ -66,9 +68,15 @@ export async function POST(request: Request) {
     const ownerCache = new Map<string, { name: string; email: string | undefined } | null>()
     const syncedCompanyIds: string[] = []
     let synced = 0
+    let skipped = 0
     let errors = 0
 
     for (const [companyId, { companyData, deals }] of companiesMap) {
+      // Only sync confirmed customers — orphan deals and non-customers are excluded
+      if (companyData.lifecycleStage !== 'customer') {
+        skipped++
+        continue
+      }
       try {
         const primary = pickPrimaryDeal(deals)
         const p = primary.properties
@@ -93,7 +101,7 @@ export async function POST(request: Request) {
         const fields = {
           hubspotId: primary.id,
           overgradId: companyData.overgradId,
-          name: p[HS_PROPS.DEAL_NAME] ?? 'Unnamed',
+          name: companyData.companyName ?? p[HS_PROPS.DEAL_NAME] ?? 'Unnamed',
           owner: owner?.name ?? null,
           ownerEmail: owner?.email ?? null,
           renewalDate: p[HS_PROPS.CLOSE_DATE] ? new Date(p[HS_PROPS.CLOSE_DATE]!) : null,
@@ -137,6 +145,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       synced,
+      skipped,
       errors,
       deleted: deleted.count,
       total: deals.length,
@@ -147,6 +156,9 @@ export async function POST(request: Request) {
         stageCount: pipelineInfo?.stageMap.size ?? 0,
         dealsWithCompany: companyDataMap.size,
         dealsWithOvergradId: [...companyDataMap.values()].filter((c) => c.overgradId).length,
+        companiesWithCustomerLifecycle: [...companiesMap.values()].filter(
+          (c) => c.companyData.lifecycleStage === 'customer',
+        ).length,
       },
     })
   } catch (err) {

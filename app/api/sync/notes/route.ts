@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getNotesForDeals } from '@/lib/hubspot-notes'
+import { getNotesForDeals, getEmailsForCompanies } from '@/lib/hubspot-notes'
 import { analyzeSentiment } from '@/lib/sentiment'
 
-// POST /api/sync/notes — fetches HubSpot notes (Granola exports) for all deals
-// and updates lastCsTouchpoint + meetingSentiment + aiSentimentSummary
+// POST /api/sync/notes — fetches HubSpot meetings (Granola) + emails for all accounts
+// Updates lastCsTouchpoint (max of meetings + outgoing emails), lastCustomerContact (incoming emails)
 export async function POST(request: Request) {
   const authHeader = request.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.SYNC_SECRET}`) {
@@ -13,30 +13,52 @@ export async function POST(request: Request) {
 
   try {
     const accounts = await prisma.account.findMany({
-      select: { id: true, hubspotId: true, name: true },
+      select: { id: true, hubspotId: true, companyId: true, name: true },
     })
 
     const dealIds = accounts.map((a) => a.hubspotId).filter((id): id is string => id !== null)
-    const notesByDeal = await getNotesForDeals(dealIds)
+    const companyIds = accounts.map((a) => a.companyId).filter((id): id is string => id !== null)
+
+    const [notesByDeal, emailsByCompany] = await Promise.all([
+      getNotesForDeals(dealIds),
+      getEmailsForCompanies(companyIds),
+    ])
 
     let updated = 0
     let sentimentScored = 0
 
     for (const account of accounts) {
       const notes = account.hubspotId ? notesByDeal.get(account.hubspotId) : undefined
-      if (!notes || notes.length === 0) continue
+      const emails = account.companyId ? emailsByCompany.get(account.companyId) : undefined
 
-      const lastCsTouchpoint = notes[0].timestamp // already sorted newest first
+      if (!notes && !emails) continue
 
-      const sentiment = await analyzeSentiment(
-        account.name,
-        notes.map((n) => n.body).filter(Boolean)
+      const meetingTimestamp = notes?.[0]?.timestamp ?? null
+      const outgoingEmail = emails?.lastOutgoing ?? null
+      const incomingEmail = emails?.lastIncoming ?? null
+
+      // lastCsTouchpoint = most recent of (meeting, outgoing email)
+      const touchpointCandidates = [meetingTimestamp, outgoingEmail].filter(
+        (d): d is Date => d !== null,
       )
+      const lastCsTouchpoint =
+        touchpointCandidates.length > 0
+          ? touchpointCandidates.reduce((max, d) => (d > max ? d : max))
+          : null
+
+      const sentiment =
+        notes && notes.length > 0
+          ? await analyzeSentiment(
+              account.name,
+              notes.map((n) => n.body).filter(Boolean),
+            )
+          : null
 
       await prisma.account.update({
         where: { id: account.id },
         data: {
-          lastCsTouchpoint,
+          ...(lastCsTouchpoint && { lastCsTouchpoint }),
+          ...(incomingEmail && { lastCustomerContact: incomingEmail }),
           ...(sentiment && {
             meetingSentiment: sentiment.sentiment,
             aiSentimentSummary: sentiment.summary,
@@ -50,6 +72,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       dealsWithNotes: notesByDeal.size,
+      companiesWithEmails: emailsByCompany.size,
       updated,
       sentimentScored,
     })
