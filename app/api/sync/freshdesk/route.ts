@@ -52,15 +52,11 @@ export async function POST(request: Request) {
       updated++
     }
 
-    const sampleFreshdeskIds = [...byDistrict.keys()].slice(0, 5)
-    const sampleOvergradIds = accounts.map((a) => a.overgradId).filter(Boolean).slice(0, 5)
-
     return NextResponse.json({
       ticketsFetched: tickets.length,
       accountsWithTickets: byDistrict.size,
       updated,
       skipped,
-      debug: { sampleFreshdeskIds, sampleOvergradIds },
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error'

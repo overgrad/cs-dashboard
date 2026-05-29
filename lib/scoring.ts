@@ -96,12 +96,12 @@ function scoreTicketTrend(trend: string | null): ScoreDimension {
   const weight = 0.15
   if (!trend) return { label, score: 'na', weight, value: 'no data' }
   const score =
-    trend === 'stable_down'
+    trend === 'down' || trend === 'stable'
       ? 'green'
-      : trend === 'slight_increase'
-        ? 'yellow'
-        : 'red'
-  return { label, score, weight, value: trend.replace(/_/g, ' ') }
+      : trend === 'up'
+        ? 'red'
+        : 'yellow'
+  return { label, score, weight, value: trend }
 }
 
 function scoreSentiment(sentiment: string | null, label: string, weight: number): ScoreDimension {
@@ -125,9 +125,10 @@ function scoreChampion(status: string | null): ScoreDimension {
 export function computeUsageScore(account: Account): ScoreResult {
   const dims: ScoreDimension[] = [
     scoreWAU(account.wauEducators, account.totalLicensedSeats, 'WAU educators'),
-    scoreWAU(account.wauStudents, account.totalLicensedSeats, 'WAU students'),
     scoreCompletion80(account.studentsCompletedSetupPct, '% students completed setup', 0.2),
-    scoreCompletion80(account.milestoneCompletionPct, 'Milestone completion', 0.15),
+    scoreCompletion80(account.careerMilestoneCompletionPct, 'Career milestone completion', 0.15),
+    scoreCompletion80(account.collegeMilestoneCompletionPct, 'College milestone completion', 0.15),
+    scoreCompletion80(account.commonAppLinking, 'Common App linking', 0.1),
     scoreLastUpload(account.lastDataUploadDate),
   ]
   return { score: normalizeScore(dims), components: dims }

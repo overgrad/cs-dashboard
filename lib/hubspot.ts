@@ -13,9 +13,6 @@ export const DEAL_PROPERTIES = [
   HS_PROPS.OWNER_ID,
   HS_PROPS.LINE_ITEM_IDS,
   HS_PROPS.ONBOARDING_DATE,
-  HS_PROPS.STUDENTS_COMPLETED_SETUP_PCT,
-  HS_PROPS.MILESTONE_COMPLETION_PCT,
-  HS_PROPS.LAST_DATA_UPLOAD_DATE,
   HS_PROPS.TOTAL_LICENSED_SEATS,
   'pipeline',
 ]
@@ -106,13 +103,31 @@ export async function getDealsWithLineItems(dealIds: string[]): Promise<Set<stri
   return withLineItems
 }
 
-// Fetch overgrad_id from associated companies for a batch of deal IDs
-// Returns Map<dealId, overgradId>
-export async function getCompanyOvergradIds(dealIds: string[]): Promise<Map<string, string>> {
-  const dealToOvergradId = new Map<string, string>()
+export interface CompanyData {
+  overgradId: string | null
+  studentsCompletedSetupPct: number | null
+  careerMilestoneCompletionPct: number | null
+  collegeMilestoneCompletionPct: number | null
+  commonAppLinking: number | null
+  lastDataUploadDate: Date | null
+}
+
+const COMPANY_PROPERTIES = [
+  HS_PROPS.OVERGRAD_ID,
+  HS_PROPS.STUDENTS_COMPLETED_SETUP_PCT,
+  HS_PROPS.CAREER_MILESTONE_PCT,
+  HS_PROPS.COLLEGE_MILESTONE_PCT,
+  HS_PROPS.COMMON_APP_LINKING,
+  HS_PROPS.LAST_DATA_UPLOAD_DATE,
+]
+
+// Fetch company data for a batch of deal IDs
+// Returns Map<dealId, CompanyData>
+export async function getCompanyData(dealIds: string[]): Promise<Map<string, CompanyData>> {
+  const result = new Map<string, CompanyData>()
   const chunkSize = 100
 
-  // Step 1: deal → company associations (normalize IDs to strings)
+  // Step 1: deal → company associations
   const dealToCompanyId = new Map<string, string>()
   for (let i = 0; i < dealIds.length; i += chunkSize) {
     const chunk = dealIds.slice(i, i + chunkSize)
@@ -122,9 +137,9 @@ export async function getCompanyOvergradIds(dealIds: string[]): Promise<Map<stri
         'companies',
         { inputs: chunk.map((id) => ({ id })) }
       )
-      for (const result of response.results) {
-        if (result.to && result.to.length > 0) {
-          dealToCompanyId.set(result._from.id, String(result.to[0].toObjectId))
+      for (const r of response.results) {
+        if (r.to && r.to.length > 0) {
+          dealToCompanyId.set(r._from.id, String(r.to[0].toObjectId))
         }
       }
     } catch {
@@ -132,33 +147,42 @@ export async function getCompanyOvergradIds(dealIds: string[]): Promise<Map<stri
     }
   }
 
-  // Step 2: batch fetch company overgrad_id; build reverse map companyId → overgradId
+  // Step 2: batch fetch company properties
   const companyIds = [...new Set(dealToCompanyId.values())]
-  const companyOvergradMap = new Map<string, string>()
+  const companyDataMap = new Map<string, CompanyData>()
   for (let i = 0; i < companyIds.length; i += chunkSize) {
     const chunk = companyIds.slice(i, i + chunkSize)
     try {
       const response = await hubspotClient.crm.companies.batchApi.read({
         inputs: chunk.map((id) => ({ id })),
-        properties: [HS_PROPS.OVERGRAD_ID],
+        properties: COMPANY_PROPERTIES,
         propertiesWithHistory: [],
       })
       for (const company of response.results) {
-        const overgradId = company.properties?.[HS_PROPS.OVERGRAD_ID]
-        if (overgradId) companyOvergradMap.set(String(company.id), overgradId)
+        const p = company.properties ?? {}
+        const parseFloat_ = (v: unknown) => (v ? parseFloat(String(v)) : null)
+        const parseDate = (v: unknown) => (v ? new Date(String(v)) : null)
+        companyDataMap.set(String(company.id), {
+          overgradId: p[HS_PROPS.OVERGRAD_ID] ?? null,
+          studentsCompletedSetupPct: parseFloat_(p[HS_PROPS.STUDENTS_COMPLETED_SETUP_PCT]),
+          careerMilestoneCompletionPct: parseFloat_(p[HS_PROPS.CAREER_MILESTONE_PCT]),
+          collegeMilestoneCompletionPct: parseFloat_(p[HS_PROPS.COLLEGE_MILESTONE_PCT]),
+          commonAppLinking: parseFloat_(p[HS_PROPS.COMMON_APP_LINKING]),
+          lastDataUploadDate: parseDate(p[HS_PROPS.LAST_DATA_UPLOAD_DATE]),
+        })
       }
     } catch {
       // skip chunk on error
     }
   }
 
-  // Step 3: combine — deal → company → overgradId
+  // Step 3: combine — deal → company → data
   for (const [dealId, companyId] of dealToCompanyId) {
-    const overgradId = companyOvergradMap.get(companyId)
-    if (overgradId) dealToOvergradId.set(dealId, overgradId)
+    const data = companyDataMap.get(companyId)
+    if (data) result.set(dealId, data)
   }
 
-  return dealToOvergradId
+  return result
 }
 
 // Fetch primary contact email from contact ID (obtained from deal associations)

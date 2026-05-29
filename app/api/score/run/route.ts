@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { computeUsageScore, computeInteractionsScore } from '@/lib/scoring'
-import { runAlertsForAccount } from '@/lib/alerts'
+import { runRenewalAlerts, runHealthAlerts } from '@/lib/alerts'
 
 // POST /api/score/run — compute scores for all active accounts and store in score_history.
 // Called by the daily cron or manually. Protected by SYNC_SECRET.
@@ -12,10 +12,28 @@ export async function POST(request: Request) {
   }
 
   const weekStart = getWeekStart()
+  const now = new Date()
+  const twelveMonthsOut = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000)
 
   const accounts = await prisma.account.findMany({
     where: { isOnboarding: false },
   })
+
+  // Determine primary deal per company for health alerts.
+  // Primary = deal whose renewalDate is closest to today (upcoming preferred, then most recent past).
+  const primaryByCompany = new Map<string, typeof accounts[0]>()
+  for (const account of accounts) {
+    const key = account.overgradId ?? account.id
+    const existing = primaryByCompany.get(key)
+    if (!existing) {
+      primaryByCompany.set(key, account)
+    } else {
+      const dist = (a: typeof account) =>
+        a.renewalDate ? Math.abs(a.renewalDate.getTime() - now.getTime()) : Infinity
+      if (dist(account) < dist(existing)) primaryByCompany.set(key, account)
+    }
+  }
+  const primaryIds = new Set([...primaryByCompany.values()].map((a) => a.id))
 
   let scored = 0
   let errors = 0
@@ -25,7 +43,6 @@ export async function POST(request: Request) {
       const usageResult = computeUsageScore(account)
       const interactionsResult = computeInteractionsScore(account)
 
-      // Fetch previous week's scores for trend/drop alerts
       const prevWeekStart = new Date(weekStart.getTime() - 7 * 24 * 60 * 60 * 1000)
       const previousScores = await prisma.scoreHistory.findUnique({
         where: { accountId_week: { accountId: account.id, week: prevWeekStart } },
@@ -50,12 +67,17 @@ export async function POST(request: Request) {
         },
       })
 
-      await runAlertsForAccount(
-        account,
-        previousScores ?? null,
-        usageResult.score,
-        interactionsResult.score
-      )
+      // Renewal alerts: only for deals renewing in the next 12 months
+      const hasUpcomingRenewal =
+        account.renewalDate && account.renewalDate > now && account.renewalDate <= twelveMonthsOut
+      if (hasUpcomingRenewal) {
+        await runRenewalAlerts(account)
+      }
+
+      // Health alerts: only for the primary deal per company
+      if (primaryIds.has(account.id)) {
+        await runHealthAlerts(account, previousScores ?? null, usageResult.score, interactionsResult.score)
+      }
 
       scored++
     } catch {

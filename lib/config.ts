@@ -11,11 +11,15 @@ export const HS_PROPS = {
   ONBOARDING_DATE: 'onboarding_date',
   OVERGRAD_ID: 'overgrad_id',
 
-  // Admin Console data ported into HubSpot (update names to match your properties)
-  STUDENTS_COMPLETED_SETUP_PCT: 'students_completed_setup_pct', // Number, 0–100
-  MILESTONE_COMPLETION_PCT: 'milestone_completion_pct',          // Number, 0–100
-  LAST_DATA_UPLOAD_DATE: 'last_data_upload_date',                // Date
-  TOTAL_LICENSED_SEATS: 'total_licensed_seats',                  // Number
+  // Deal-level properties
+  TOTAL_LICENSED_SEATS: 'total_licensed_seats',
+
+  // Company-level properties (Admin Console data synced into HubSpot)
+  STUDENTS_COMPLETED_SETUP_PCT: 'of_students_that_setup_accounts',
+  CAREER_MILESTONE_PCT: 'career_milestone_completion',
+  COLLEGE_MILESTONE_PCT: 'college_milestone_completion',
+  COMMON_APP_LINKING: 'common_app_linking',
+  LAST_DATA_UPLOAD_DATE: 'date_of_last_data_upload',
 } as const
 
 // Scoring thresholds — matches spec section 2a/2b exactly

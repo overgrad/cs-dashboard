@@ -46,7 +46,9 @@ async function checkRenewalAlerts(account: Account) {
   const daysUntil = Math.ceil(
     (account.renewalDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
   )
-  if (daysUntil < 0 || daysUntil > 90) return
+  // Only alert for renewals in the next 12 months; ignore old deals
+  if (daysUntil < 0 || daysUntil > 365) return
+  if (daysUntil > 90) return
 
   let triggerType: string
   let channel: string
@@ -276,17 +278,24 @@ async function checkInactivityAlerts(account: Account) {
   }
 }
 
-// ─── Public: run all alerts for one account ───────────────────────────────────
+// ─── Public API ───────────────────────────────────────────────────────────────
 
-export async function runAlertsForAccount(
+// Renewal alerts — call for every deal with an upcoming renewal (next 12 months)
+export async function runRenewalAlerts(account: Account) {
+  await Promise.allSettled([
+    checkRenewalAlerts(account),
+    checkMissingDataAlerts(account),
+  ])
+}
+
+// Health/activity alerts — call once per company (primary deal only)
+export async function runHealthAlerts(
   account: Account,
   previousScores: { usageScore: number | null; interactionsScore: number | null } | null,
   currentUsage: number | null,
   currentInteractions: number | null
 ) {
   await Promise.allSettled([
-    checkRenewalAlerts(account),
-    checkMissingDataAlerts(account),
     checkScoreDropAlerts(account, previousScores, currentUsage, currentInteractions),
     checkDivergenceAlert(account, previousScores, currentUsage, currentInteractions),
     checkInactivityAlerts(account),

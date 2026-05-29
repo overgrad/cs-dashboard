@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getAllDeals, getOwner, getContact, getRenewalsPipelineInfo, getDealsWithLineItems, getCompanyOvergradIds } from '@/lib/hubspot'
+import { getAllDeals, getOwner, getContact, getRenewalsPipelineInfo, getDealsWithLineItems, getCompanyData } from '@/lib/hubspot'
 import { HS_PROPS } from '@/lib/config'
 
 // POST /api/sync/hubspot — pulls all deals from HubSpot and upserts into accounts
@@ -14,9 +14,9 @@ export async function POST(request: Request) {
     const pipelineInfo = await getRenewalsPipelineInfo()
     const deals = await getAllDeals(pipelineInfo?.pipelineId)
     const dealIds = deals.map((d) => d.id)
-    const [dealsWithLineItems, companyOvergradIds] = await Promise.all([
+    const [dealsWithLineItems, companyDataMap] = await Promise.all([
       getDealsWithLineItems(dealIds),
-      getCompanyOvergradIds(dealIds),
+      getCompanyData(dealIds),
     ])
     const ownerCache = new Map<string, { name: string; email: string | undefined } | null>()
 
@@ -43,15 +43,11 @@ export async function POST(request: Request) {
           ? new Date() < new Date(onboardingDate.getTime() + 8 * 7 * 24 * 60 * 60 * 1000)
           : false
 
-        const lastDataUploadRaw = p[HS_PROPS.LAST_DATA_UPLOAD_DATE]
-        const lastDataUploadDate = lastDataUploadRaw ? new Date(lastDataUploadRaw) : null
-
-        const studentsSetupRaw = p[HS_PROPS.STUDENTS_COMPLETED_SETUP_PCT]
-        const milestoneRaw = p[HS_PROPS.MILESTONE_COMPLETION_PCT]
         const seatsRaw = p[HS_PROPS.TOTAL_LICENSED_SEATS]
+        const company = companyDataMap.get(deal.id) ?? null
 
         const fields = {
-          overgradId: companyOvergradIds.get(deal.id) ?? null,
+          overgradId: company?.overgradId ?? null,
           name: p[HS_PROPS.DEAL_NAME] ?? 'Unnamed',
           owner: owner?.name ?? null,
           ownerEmail: owner?.email ?? null,
@@ -63,10 +59,12 @@ export async function POST(request: Request) {
           hasLineItems: dealsWithLineItems.has(deal.id),
           onboardingDate,
           isOnboarding,
-          lastDataUploadDate,
-          studentsCompletedSetupPct: studentsSetupRaw ? parseFloat(studentsSetupRaw) : null,
-          milestoneCompletionPct: milestoneRaw ? parseFloat(milestoneRaw) : null,
           totalLicensedSeats: seatsRaw ? parseInt(seatsRaw) : null,
+          studentsCompletedSetupPct: company?.studentsCompletedSetupPct ?? null,
+          careerMilestoneCompletionPct: company?.careerMilestoneCompletionPct ?? null,
+          collegeMilestoneCompletionPct: company?.collegeMilestoneCompletionPct ?? null,
+          commonAppLinking: company?.commonAppLinking ?? null,
+          lastDataUploadDate: company?.lastDataUploadDate ?? null,
         }
 
         await prisma.account.upsert({
@@ -95,8 +93,8 @@ export async function POST(request: Request) {
         pipelineFound: !!pipelineInfo,
         pipelineId: pipelineInfo?.pipelineId ?? null,
         stageCount: pipelineInfo?.stageMap.size ?? 0,
-        dealsWithCompany: companyOvergradIds.size,
-        dealsWithOvergradId: [...companyOvergradIds.values()].filter(Boolean).length,
+        dealsWithCompany: companyDataMap.size,
+        dealsWithOvergradId: [...companyDataMap.values()].filter((c) => c.overgradId).length,
       },
     })
   } catch (err) {
