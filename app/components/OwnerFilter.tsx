@@ -1,25 +1,22 @@
 'use client'
 
-import { useRouter, useSearchParams, usePathname } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 
 interface OwnerFilterProps {
   owners: string[]
   selected: string
+  basePath: string
+  extraParams?: Record<string, string>
 }
 
-export function OwnerFilter({ owners, selected }: OwnerFilterProps) {
+export function OwnerFilter({ owners, selected, basePath, extraParams = {} }: OwnerFilterProps) {
   const router = useRouter()
-  const pathname = usePathname()
-  const searchParams = useSearchParams()
 
   function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    const params = new URLSearchParams(searchParams.toString())
-    if (e.target.value) {
-      params.set('owner', e.target.value)
-    } else {
-      params.delete('owner')
-    }
-    router.push(`${pathname}?${params.toString()}`)
+    const params = new URLSearchParams(extraParams)
+    if (e.target.value) params.set('owner', e.target.value)
+    const qs = params.toString()
+    router.push(`${basePath}${qs ? `?${qs}` : ''}`)
   }
 
   return (

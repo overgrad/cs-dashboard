@@ -194,6 +194,8 @@ export default async function AccountPage({
         {[
           { label: 'Last CS touchpoint', value: account.lastCsTouchpoint ? `${daysAgo(account.lastCsTouchpoint)} days ago` : null },
           { label: 'Last customer contact', value: account.lastCustomerContact ? `${daysAgo(account.lastCustomerContact)} days ago` : null },
+          { label: 'Last educator login', value: null },
+          { label: 'Last student login', value: null },
           { label: 'Meeting sentiment', value: account.meetingSentiment },
           { label: 'Ticket sentiment', value: account.ticketSentiment },
           { label: 'Ticket volume trend', value: account.ticketVolumeTrend },

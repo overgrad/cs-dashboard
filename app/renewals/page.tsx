@@ -4,6 +4,8 @@ import { prisma } from '@/lib/prisma'
 import { StatCard } from '@/app/components/StatCard'
 import { SectionHeader } from '@/app/components/SectionHeader'
 import { OwnerFilter } from '@/app/components/OwnerFilter'
+import { SearchInput } from '@/app/components/SearchInput'
+import { CollapsibleSection } from '@/app/components/CollapsibleSection'
 
 function formatARR(n: number) {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`
@@ -24,9 +26,9 @@ function daysUntil(d: Date | null) {
 export default async function RenewalsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ owner?: string }>
+  searchParams: Promise<{ owner?: string; q?: string }>
 }) {
-  const { owner: ownerFilter } = await searchParams
+  const { owner: ownerFilter, q } = await searchParams
   let accounts: Awaited<ReturnType<typeof prisma.account.findMany>> = []
   let allOwners: string[] = []
   let dbError = false
@@ -36,6 +38,7 @@ export default async function RenewalsPage({
     const where = {
       OR: [{ renewalDate: { gte: sixtyDaysAgo } }, { renewalDate: null }],
       ...(ownerFilter ? { owner: ownerFilter } : {}),
+      ...(q ? { name: { contains: q, mode: 'insensitive' as const } } : {}),
     }
     ;[accounts, allOwners] = await Promise.all([
       prisma.account.findMany({ where, orderBy: { renewalDate: 'asc' } }),
@@ -69,13 +72,11 @@ export default async function RenewalsPage({
   }
 
   const now = new Date()
-  const outstandingAccounts = accounts.filter(
-    (a) => a.renewalDate && a.renewalDate > now
-  )
+  const outstandingAccounts = accounts.filter((a) => a.renewalDate && a.renewalDate > now)
   const totalARR = outstandingAccounts.reduce((sum, a) => sum + (a.arr ?? 0), 0)
 
   const needsAttention = accounts.filter(
-    (a) => !a.renewalDate || !a.hasLineItems || !a.primaryContact
+    (a) => !a.renewalDate || !a.hasLineItems || !a.primaryContact,
   )
   const projectedARR = accounts.reduce((sum, a) => sum + (a.arr ?? 0), 0)
 
@@ -107,10 +108,22 @@ export default async function RenewalsPage({
 
   return (
     <div className="space-y-8">
-      {/* Owner filter */}
-      <div className="flex items-center gap-3">
-        <span className="text-sm text-slate-500">Filter by owner:</span>
-        <OwnerFilter owners={allOwners} selected={ownerFilter ?? ''} />
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-slate-500">Filter by owner:</span>
+          <OwnerFilter
+            owners={allOwners}
+            selected={ownerFilter ?? ''}
+            basePath="/renewals"
+            extraParams={q ? { q } : {}}
+          />
+        </div>
+        <SearchInput
+          basePath="/renewals"
+          defaultValue={q ?? ''}
+          extraParams={ownerFilter ? { owner: ownerFilter } : {}}
+        />
       </div>
 
       {/* Summary cards */}
@@ -146,168 +159,16 @@ export default async function RenewalsPage({
         </div>
       ) : (
         <>
-          {/* Pipeline by stage */}
-          <div>
-            <SectionHeader title="Pipeline by stage" />
-            <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-              <table className="w-full text-sm">
-                <thead className="border-b border-slate-100 bg-slate-50 text-xs font-medium uppercase text-slate-500">
-                  <tr>
-                    <th className="px-4 py-2 text-left">Stage</th>
-                    <th className="px-4 py-2 text-right">Deals</th>
-                    <th className="px-4 py-2 text-right">ARR</th>
-                    <th className="px-4 py-2 w-48"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {stages.map(([stage, { count, arr }]) => (
-                    <tr key={stage} className="hover:bg-slate-50">
-                      <td className="px-4 py-2.5 font-medium text-slate-800">{stage}</td>
-                      <td className="px-4 py-2.5 text-right text-slate-600">{count}</td>
-                      <td className="px-4 py-2.5 text-right font-medium text-slate-800">
-                        {formatARR(arr)}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <div className="h-2 rounded-full bg-slate-100">
-                          <div
-                            className="h-2 rounded-full bg-indigo-500"
-                            style={{ width: `${(arr / maxStageARR) * 100}%` }}
-                          />
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Pipeline by owner */}
-          <div>
-            <SectionHeader title="Pipeline by owner" />
-            <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-              <table className="w-full text-sm">
-                <thead className="border-b border-slate-100 bg-slate-50 text-xs font-medium uppercase text-slate-500">
-                  <tr>
-                    <th className="px-4 py-2 text-left">Owner</th>
-                    <th className="px-4 py-2 text-right">Deals</th>
-                    <th className="px-4 py-2 text-right">ARR</th>
-                    <th className="px-4 py-2 w-48"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {owners.map(([owner, { count, arr }]) => (
-                    <tr key={owner} className="hover:bg-slate-50">
-                      <td className="px-4 py-2.5 font-medium text-slate-800">{owner}</td>
-                      <td className="px-4 py-2.5 text-right text-slate-600">{count}</td>
-                      <td className="px-4 py-2.5 text-right font-medium text-slate-800">
-                        {formatARR(arr)}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <div className="h-2 rounded-full bg-slate-100">
-                          <div
-                            className="h-2 rounded-full bg-emerald-500"
-                            style={{ width: `${(arr / maxOwnerARR) * 100}%` }}
-                          />
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Upcoming renewals table */}
-          <div>
-            <SectionHeader
-              title="Upcoming renewals (next 90 days)"
-              description={`${upcoming.length} renewals due`}
-            />
-            {upcoming.length === 0 ? (
-              <p className="text-sm text-slate-500">No renewals due in the next 90 days.</p>
-            ) : (
-              <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-                <table className="w-full text-sm">
-                  <thead className="border-b border-slate-100 bg-slate-50 text-xs font-medium uppercase text-slate-500">
-                    <tr>
-                      <th className="px-4 py-2 text-left">Account</th>
-                      <th className="px-4 py-2 text-left">Stage</th>
-                      <th className="px-4 py-2 text-right">ARR</th>
-                      <th className="px-4 py-2 text-left">Owner</th>
-                      <th className="px-4 py-2 text-left">Close date</th>
-                      <th className="px-4 py-2 text-left">Issues</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {upcoming.map((a) => {
-                      const days = daysUntil(a.renewalDate)
-                      const issues = [
-                        !a.renewalDate && 'No close date',
-                        !a.hasLineItems && 'No line items',
-                        !a.primaryContact && 'No contact',
-                      ].filter(Boolean)
-
-                      return (
-                        <tr key={a.id} className="hover:bg-slate-50">
-                          <td className="px-4 py-3 font-medium text-slate-900">
-                            <a
-                              href={`/accounts/${a.id}`}
-                              className="hover:text-indigo-600 hover:underline"
-                            >
-                              {a.name}
-                            </a>
-                          </td>
-                          <td className="px-4 py-3 text-slate-600">{a.dealStage ?? '—'}</td>
-                          <td className="px-4 py-3 text-right font-medium text-slate-800">
-                            {a.arr ? formatARR(a.arr) : '—'}
-                          </td>
-                          <td className="px-4 py-3 text-slate-600">{a.owner ?? '—'}</td>
-                          <td className="px-4 py-3">
-                            <span className="text-slate-800">{formatDate(a.renewalDate)}</span>
-                            {days !== null && (
-                              <span
-                                className={`ml-2 text-xs ${days <= 30 ? 'text-red-600 font-semibold' : days <= 60 ? 'text-yellow-600' : 'text-slate-400'}`}
-                              >
-                                {days}d
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3">
-                            {issues.length > 0 ? (
-                              <div className="flex flex-wrap gap-1">
-                                {issues.map((issue) => (
-                                  <span
-                                    key={issue as string}
-                                    className="rounded bg-red-100 px-1.5 py-0.5 text-xs font-medium text-red-700"
-                                  >
-                                    {issue}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : (
-                              <span className="text-xs text-slate-400">—</span>
-                            )}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          {/* Needs attention table */}
+          {/* Needs attention — shown first */}
           {needsAttention.length > 0 && (
-            <div>
-              <SectionHeader
-                title="Needs attention"
-                description="Deals missing close date, line items, or contact"
-              />
-              <div className="overflow-x-auto rounded-lg border border-yellow-200 bg-white">
+            <CollapsibleSection
+              title="Needs attention"
+              count={needsAttention.length}
+              subtitle="Missing close date, line items, or contact"
+            >
+              <div className="max-h-[50vh] overflow-auto rounded-lg border border-yellow-200 bg-white">
                 <table className="w-full text-sm">
-                  <thead className="border-b border-yellow-100 bg-yellow-50 text-xs font-medium uppercase text-slate-500">
+                  <thead className="sticky top-0 z-10 border-b border-yellow-100 bg-yellow-50 text-xs font-medium uppercase text-slate-500">
                     <tr>
                       <th className="px-4 py-2 text-left">Account</th>
                       <th className="px-4 py-2 text-left">Stage</th>
@@ -317,7 +178,7 @@ export default async function RenewalsPage({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {needsAttention.slice(0, 10).map((a) => {
+                    {needsAttention.slice(0, 20).map((a) => {
                       const missing = [
                         !a.renewalDate && 'Close date',
                         !a.hasLineItems && 'Line items',
@@ -357,8 +218,158 @@ export default async function RenewalsPage({
                   </tbody>
                 </table>
               </div>
-            </div>
+            </CollapsibleSection>
           )}
+
+          {/* Pipeline by stage */}
+          <CollapsibleSection title="Pipeline by stage" count={stages.length}>
+            <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 z-10 border-b border-slate-100 bg-slate-50 text-xs font-medium uppercase text-slate-500">
+                  <tr>
+                    <th className="px-4 py-2 text-left">Stage</th>
+                    <th className="px-4 py-2 text-right">Deals</th>
+                    <th className="px-4 py-2 text-right">ARR</th>
+                    <th className="w-48 px-4 py-2"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {stages.map(([stage, { count, arr }]) => (
+                    <tr key={stage} className="hover:bg-slate-50">
+                      <td className="px-4 py-2.5 font-medium text-slate-800">{stage}</td>
+                      <td className="px-4 py-2.5 text-right text-slate-600">{count}</td>
+                      <td className="px-4 py-2.5 text-right font-medium text-slate-800">
+                        {formatARR(arr)}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <div className="h-2 rounded-full bg-slate-100">
+                          <div
+                            className="h-2 rounded-full bg-indigo-500"
+                            style={{ width: `${(arr / maxStageARR) * 100}%` }}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CollapsibleSection>
+
+          {/* Pipeline by owner */}
+          <CollapsibleSection title="Pipeline by owner" count={owners.length}>
+            <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 z-10 border-b border-slate-100 bg-slate-50 text-xs font-medium uppercase text-slate-500">
+                  <tr>
+                    <th className="px-4 py-2 text-left">Owner</th>
+                    <th className="px-4 py-2 text-right">Deals</th>
+                    <th className="px-4 py-2 text-right">ARR</th>
+                    <th className="w-48 px-4 py-2"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {owners.map(([owner, { count, arr }]) => (
+                    <tr key={owner} className="hover:bg-slate-50">
+                      <td className="px-4 py-2.5 font-medium text-slate-800">{owner}</td>
+                      <td className="px-4 py-2.5 text-right text-slate-600">{count}</td>
+                      <td className="px-4 py-2.5 text-right font-medium text-slate-800">
+                        {formatARR(arr)}
+                      </td>
+                      <td className="px-4 py-2.5">
+                        <div className="h-2 rounded-full bg-slate-100">
+                          <div
+                            className="h-2 rounded-full bg-emerald-500"
+                            style={{ width: `${(arr / maxOwnerARR) * 100}%` }}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CollapsibleSection>
+
+          {/* Upcoming renewals */}
+          <CollapsibleSection
+            title="Upcoming renewals"
+            count={upcoming.length}
+            subtitle="next 90 days"
+          >
+            {upcoming.length === 0 ? (
+              <p className="text-sm text-slate-500">No renewals due in the next 90 days.</p>
+            ) : (
+              <div className="max-h-[60vh] overflow-auto rounded-lg border border-slate-200 bg-white">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 z-10 border-b border-slate-100 bg-slate-50 text-xs font-medium uppercase text-slate-500">
+                    <tr>
+                      <th className="px-4 py-2 text-left">Account</th>
+                      <th className="px-4 py-2 text-left">Stage</th>
+                      <th className="px-4 py-2 text-right">ARR</th>
+                      <th className="px-4 py-2 text-left">Owner</th>
+                      <th className="px-4 py-2 text-left">Close date</th>
+                      <th className="px-4 py-2 text-left">Issues</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {upcoming.map((a) => {
+                      const days = daysUntil(a.renewalDate)
+                      const issues = [
+                        !a.renewalDate && 'No close date',
+                        !a.hasLineItems && 'No line items',
+                        !a.primaryContact && 'No contact',
+                      ].filter(Boolean)
+
+                      return (
+                        <tr key={a.id} className="hover:bg-slate-50">
+                          <td className="px-4 py-3 font-medium text-slate-900">
+                            <a
+                              href={`/accounts/${a.id}`}
+                              className="hover:text-indigo-600 hover:underline"
+                            >
+                              {a.name}
+                            </a>
+                          </td>
+                          <td className="px-4 py-3 text-slate-600">{a.dealStage ?? '—'}</td>
+                          <td className="px-4 py-3 text-right font-medium text-slate-800">
+                            {a.arr ? formatARR(a.arr) : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-slate-600">{a.owner ?? '—'}</td>
+                          <td className="px-4 py-3">
+                            <span className="text-slate-800">{formatDate(a.renewalDate)}</span>
+                            {days !== null && (
+                              <span
+                                className={`ml-2 text-xs ${days <= 30 ? 'font-semibold text-red-600' : days <= 60 ? 'text-yellow-600' : 'text-slate-400'}`}
+                              >
+                                {days}d
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            {issues.length > 0 ? (
+                              <div className="flex flex-wrap gap-1">
+                                {issues.map((issue) => (
+                                  <span
+                                    key={issue as string}
+                                    className="rounded bg-red-100 px-1.5 py-0.5 text-xs font-medium text-red-700"
+                                  >
+                                    {issue}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-slate-400">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CollapsibleSection>
         </>
       )}
     </div>

@@ -291,7 +291,12 @@ export default async function QueuePage({
       {/* Owner filter */}
       <div className="flex items-center gap-3">
         <span className="text-sm text-slate-500">Filter by owner:</span>
-        <OwnerFilter owners={allOwners} selected={ownerFilter ?? ''} />
+        <OwnerFilter
+          owners={allOwners}
+          selected={ownerFilter ?? ''}
+          basePath="/queue"
+          extraParams={activeFilter ? { filter: activeFilter } : {}}
+        />
       </div>
 
       {/* Clickable stat cards */}
@@ -334,9 +339,9 @@ export default async function QueuePage({
               ← Back to queue
             </a>
           </div>
-          <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+          <div className="max-h-[60vh] overflow-auto rounded-lg border border-slate-200 bg-white">
             <table className="w-full text-sm">
-              <thead className="border-b border-slate-100 bg-slate-50 text-xs font-medium uppercase text-slate-500">
+              <thead className="sticky top-0 z-10 border-b border-slate-100 bg-slate-50 text-xs font-medium uppercase text-slate-500">
                 <tr>
                   <th className="px-4 py-2 text-left">Account</th>
                   <th className="px-4 py-2 text-left">Owner</th>
@@ -455,9 +460,9 @@ export default async function QueuePage({
                 <span className="text-base font-semibold text-slate-800">My renewals</span>
                 <span className="text-xs text-slate-400">by days to close</span>
               </div>
-              <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+              <div className="max-h-[60vh] overflow-auto rounded-xl border border-slate-200 bg-white">
                 <table className="w-full text-sm">
-                  <thead className="border-b border-slate-100 bg-slate-50 text-xs font-medium uppercase text-slate-500">
+                  <thead className="sticky top-0 z-10 border-b border-slate-100 bg-slate-50 text-xs font-medium uppercase text-slate-500">
                     <tr>
                       <th className="px-4 py-2.5 text-left">Account</th>
                       <th className="px-4 py-2.5 text-left">Close date</th>

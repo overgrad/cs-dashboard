@@ -9,6 +9,7 @@ import { Sparkline } from '@/app/components/Sparkline'
 import { SummaryCard } from '@/app/components/SummaryCard'
 import { OwnerAvatar } from '@/app/components/OwnerAvatar'
 import { ScorePill } from '@/app/components/ScorePill'
+import { SearchInput } from '@/app/components/SearchInput'
 
 function formatARR(n: number) {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`
@@ -41,22 +42,23 @@ function daysUntil(d: Date | null) {
 export default async function HealthPage({
   searchParams,
 }: {
-  searchParams: Promise<{ owner?: string }>
+  searchParams: Promise<{ owner?: string; q?: string }>
 }) {
-  const { owner: ownerFilter } = await searchParams
+  const { owner: ownerFilter, q } = await searchParams
 
-  const sixWeeksAgo = new Date(Date.now() - 6 * 7 * 24 * 60 * 60 * 1000)
+  const eightWeeksAgo = new Date(Date.now() - 8 * 7 * 24 * 60 * 60 * 1000)
 
   const [accounts, allOwners] = await Promise.all([
     prisma.account.findMany({
       where: {
         isOnboarding: false,
         ...(ownerFilter ? { owner: ownerFilter } : {}),
+        ...(q ? { name: { contains: q, mode: 'insensitive' as const } } : {}),
       },
       orderBy: { name: 'asc' },
       include: {
         scoreHistory: {
-          where: { week: { gte: sixWeeksAgo } },
+          where: { week: { gte: eightWeeksAgo } },
           orderBy: { week: 'asc' },
           select: { week: true, usageScore: true, interactionsScore: true },
         },
@@ -87,8 +89,8 @@ export default async function HealthPage({
     const historyMap = new Map(account.scoreHistory.map((h) => [h.week.toISOString(), h]))
     const sparkUsage: (number | null)[] = []
     const sparkInteractions: (number | null)[] = []
-    for (let w = 0; w < 6; w++) {
-      const weekDate = new Date(sixWeeksAgo.getTime() + w * 7 * 24 * 60 * 60 * 1000)
+    for (let w = 0; w < 8; w++) {
+      const weekDate = new Date(eightWeeksAgo.getTime() + w * 7 * 24 * 60 * 60 * 1000)
       weekDate.setUTCHours(0, 0, 0, 0)
       weekDate.setUTCDate(weekDate.getUTCDate() - weekDate.getUTCDay())
       const entry = historyMap.get(weekDate.toISOString())
@@ -151,10 +153,22 @@ export default async function HealthPage({
 
   return (
     <div className="space-y-8">
-      {/* Owner filter */}
-      <div className="flex items-center gap-3">
-        <span className="text-sm text-slate-500">Filter by owner:</span>
-        <OwnerFilter owners={allOwners} selected={ownerFilter ?? ''} />
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-slate-500">Filter by owner:</span>
+          <OwnerFilter
+            owners={allOwners}
+            selected={ownerFilter ?? ''}
+            basePath="/health"
+            extraParams={q ? { q } : {}}
+          />
+        </div>
+        <SearchInput
+          basePath="/health"
+          defaultValue={q ?? ''}
+          extraParams={ownerFilter ? { owner: ownerFilter } : {}}
+        />
       </div>
 
       {/* Summary cards */}

@@ -37,12 +37,10 @@ function normalizeScore(dims: ScoreDimension[]): number | null {
 
 // ─── Usage Score dimensions ───────────────────────────────────────────────────
 
-function scoreWAU(wau: number | null, seats: number | null, label: string): ScoreDimension {
+function scoreWAU(wau: number | null, label: string): ScoreDimension {
   const weight = 0.25
-  if (wau === null || seats === null || seats === 0) {
-    return { label, score: 'na', weight, value: 'no data' }
-  }
-  const pct = (wau / seats) * 100
+  if (wau === null) return { label, score: 'na', weight, value: 'no data' }
+  const pct = wau * 100
   const score =
     pct > THRESHOLDS.WAU_PCT_GREEN
       ? 'green'
@@ -67,28 +65,30 @@ function scoreLastUpload(date: Date | null): ScoreDimension {
   const label = 'Last data upload'
   const weight = 0.15
   if (!date) return { label, score: 'na', weight, value: 'no data' }
-  const ageMonths = (Date.now() - date.getTime()) / (1000 * 60 * 60 * 24 * 30)
+  const ageDays = Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24))
+  const ageMonths = ageDays / 30
   const score =
     ageMonths < THRESHOLDS.RECENCY_GREEN_MONTHS
       ? 'green'
       : ageMonths <= THRESHOLDS.RECENCY_YELLOW_MONTHS
         ? 'yellow'
         : 'red'
-  return { label, score, weight, value: `${ageMonths.toFixed(1)}mo ago` }
+  return { label, score, weight, value: `${ageDays} day${ageDays !== 1 ? 's' : ''} ago` }
 }
 
 // ─── Interactions Score dimensions ────────────────────────────────────────────
 
 function scoreRecency(date: Date | null, label: string, weight: number): ScoreDimension {
   if (!date) return { label, score: 'na', weight, value: 'no data' }
-  const ageMonths = (Date.now() - date.getTime()) / (1000 * 60 * 60 * 24 * 30)
+  const ageDays = Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24))
+  const ageMonths = ageDays / 30
   const score =
     ageMonths < THRESHOLDS.RECENCY_GREEN_MONTHS
       ? 'green'
       : ageMonths <= THRESHOLDS.RECENCY_YELLOW_MONTHS
         ? 'yellow'
         : 'red'
-  return { label, score, weight, value: `${ageMonths.toFixed(1)}mo ago` }
+  return { label, score, weight, value: `${ageDays} day${ageDays !== 1 ? 's' : ''} ago` }
 }
 
 function scoreTicketTrend(trend: string | null): ScoreDimension {
@@ -124,7 +124,7 @@ function scoreChampion(status: string | null): ScoreDimension {
 
 export function computeUsageScore(account: Account): ScoreResult {
   const dims: ScoreDimension[] = [
-    scoreWAU(account.wauEducators, account.totalLicensedSeats, 'WAU educators'),
+    scoreWAU(account.wauEducators, 'WAU educators'),
     scoreCompletion80(account.studentsCompletedSetupPct, '% students completed setup', 0.2),
     scoreCompletion80(account.careerMilestoneCompletionPct, 'Career milestone completion', 0.15),
     scoreCompletion80(account.collegeMilestoneCompletionPct, 'College milestone completion', 0.15),
