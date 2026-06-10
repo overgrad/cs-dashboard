@@ -6,6 +6,7 @@ import { SectionHeader } from '@/app/components/SectionHeader'
 import { OwnerFilter } from '@/app/components/OwnerFilter'
 import { SearchInput } from '@/app/components/SearchInput'
 import { CollapsibleSection } from '@/app/components/CollapsibleSection'
+import { OwnerAvatar } from '@/app/components/OwnerAvatar'
 
 function formatARR(n: number) {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`
@@ -199,7 +200,14 @@ export default async function RenewalsPage({
                           <td className="px-4 py-3 text-right font-medium text-slate-800">
                             {a.arr ? formatARR(a.arr) : '—'}
                           </td>
-                          <td className="px-4 py-3 text-slate-600">{a.owner ?? '—'}</td>
+                          <td className="px-4 py-3">
+                            {a.owner ? (
+                              <div className="flex items-center gap-2">
+                                <OwnerAvatar name={a.owner} />
+                                <span className="text-sm text-slate-700">{a.owner}</span>
+                              </div>
+                            ) : <span className="text-slate-400">—</span>}
+                          </td>
                           <td className="px-4 py-3">
                             <div className="flex flex-wrap gap-1">
                               {missing.map((m) => (
@@ -335,7 +343,14 @@ export default async function RenewalsPage({
                           <td className="px-4 py-3 text-right font-medium text-slate-800">
                             {a.arr ? formatARR(a.arr) : '—'}
                           </td>
-                          <td className="px-4 py-3 text-slate-600">{a.owner ?? '—'}</td>
+                          <td className="px-4 py-3">
+                            {a.owner ? (
+                              <div className="flex items-center gap-2">
+                                <OwnerAvatar name={a.owner} />
+                                <span className="text-sm text-slate-700">{a.owner}</span>
+                              </div>
+                            ) : <span className="text-slate-400">—</span>}
+                          </td>
                           <td className="px-4 py-3">
                             <span className="text-slate-800">{formatDate(a.renewalDate)}</span>
                             {days !== null && (

@@ -7,6 +7,8 @@ import { OwnerFilter } from '@/app/components/OwnerFilter'
 import { ScorePill } from '@/app/components/ScorePill'
 import { OwnerAvatar } from '@/app/components/OwnerAvatar'
 import { CollapsibleGroup } from '@/app/components/CollapsibleGroup'
+import { SearchInput } from '@/app/components/SearchInput'
+import { ActionMenu } from '@/app/components/ActionMenu'
 
 function formatARR(n: number) {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`
@@ -81,6 +83,7 @@ const PRIORITY_STYLE: Record<Priority, string> = {
 interface Enriched {
   account: Awaited<ReturnType<typeof prisma.account.findMany>>[number] & {
     scoreHistory: { week: Date; usageScore: number | null; interactionsScore: number | null }[]
+    queueActions: { suppressUntil: Date | null }[]
   }
   combined: number | null
   sparkCombined: (number | null)[]
@@ -165,18 +168,20 @@ function synthesize(
 export default async function QueuePage({
   searchParams,
 }: {
-  searchParams: Promise<{ owner?: string; filter?: string }>
+  searchParams: Promise<{ owner?: string; filter?: string; q?: string }>
 }) {
-  const { owner: ownerFilter, filter: activeFilter } = await searchParams
+  const { owner: ownerFilter, filter: activeFilter, q } = await searchParams
 
   const sixWeeksAgo = new Date(Date.now() - 6 * 7 * 24 * 60 * 60 * 1000)
   const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000)
+  const now = new Date()
 
   const [accounts, allOwners] = await Promise.all([
     prisma.account.findMany({
       where: {
         isOnboarding: false,
         ...(ownerFilter ? { owner: ownerFilter } : {}),
+        ...(q ? { name: { contains: q, mode: 'insensitive' as const } } : {}),
       },
       orderBy: { name: 'asc' },
       include: {
@@ -184,6 +189,10 @@ export default async function QueuePage({
           where: { week: { gte: sixWeeksAgo } },
           orderBy: { week: 'asc' },
           select: { week: true, usageScore: true, interactionsScore: true },
+        },
+        queueActions: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
         },
       },
     }),
@@ -255,7 +264,17 @@ export default async function QueuePage({
     .filter((e) => e.days !== null && e.days > 0 && e.days <= 90)
     .sort((a, b) => (a.days ?? 999) - (b.days ?? 999))
 
+  const suppressed = new Set(
+    enriched
+      .filter((e) => {
+        const latest = e.account.queueActions[0]
+        return latest?.suppressUntil && latest.suppressUntil > now
+      })
+      .map((e) => e.account.id),
+  )
+
   const needsAction = enriched
+    .filter((e) => !suppressed.has(e.account.id))
     .flatMap((e) => {
       const s = synthesize(e)
       return s ? [{ ...e, ...s }] : []
@@ -288,14 +307,27 @@ export default async function QueuePage({
 
   return (
     <div className="space-y-8">
-      {/* Owner filter */}
-      <div className="flex items-center gap-3">
-        <span className="text-sm text-slate-500">Filter by owner:</span>
-        <OwnerFilter
-          owners={allOwners}
-          selected={ownerFilter ?? ''}
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-slate-500">Filter by owner:</span>
+          <OwnerFilter
+            owners={allOwners}
+            selected={ownerFilter ?? ''}
+            basePath="/queue"
+            extraParams={{
+              ...(activeFilter ? { filter: activeFilter } : {}),
+              ...(q ? { q } : {}),
+            }}
+          />
+        </div>
+        <SearchInput
           basePath="/queue"
-          extraParams={activeFilter ? { filter: activeFilter } : {}}
+          defaultValue={q ?? ''}
+          extraParams={{
+            ...(ownerFilter ? { owner: ownerFilter } : {}),
+            ...(activeFilter ? { filter: activeFilter } : {}),
+          }}
         />
       </div>
 
@@ -400,7 +432,7 @@ export default async function QueuePage({
             const urgent = needsAction.filter((i) => i.priority === 'Urgent')
             const overdue = needsAction.filter((i) => i.priority === 'Overdue')
             const watch = needsAction.filter((i) => i.priority === 'Watch')
-            const renderItem = ({ account, title, desc, priority, icon }: typeof needsAction[number]) => (
+            const renderItem = ({ account, title, desc, priority, icon }: typeof needsAction[number], showMenu = false) => (
               <div key={account.id} className="flex items-start gap-4 px-5 py-4 hover:bg-slate-50">
                 <IssueIcon type={icon} />
                 <div className="min-w-0 flex-1">
@@ -417,9 +449,12 @@ export default async function QueuePage({
                     </a>
                   )}
                 </div>
-                <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${PRIORITY_STYLE[priority]}`}>
-                  {priority}
-                </span>
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${PRIORITY_STYLE[priority]}`}>
+                    {priority}
+                  </span>
+                  {showMenu && <ActionMenu accountId={account.id} />}
+                </div>
               </div>
             )
             return (
@@ -435,16 +470,16 @@ export default async function QueuePage({
                 ) : (
                   <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
                     {urgent.length > 0 && (
-                      <div className="divide-y divide-slate-100">{urgent.map(renderItem)}</div>
+                      <div className="divide-y divide-slate-100">{urgent.map((i) => renderItem(i, true))}</div>
                     )}
                     {overdue.length > 0 && (
                       <CollapsibleGroup label="Overdue" count={overdue.length} defaultOpen={true}>
-                        {overdue.map(renderItem)}
+                        {overdue.map((i) => renderItem(i, true))}
                       </CollapsibleGroup>
                     )}
                     {watch.length > 0 && (
                       <CollapsibleGroup label="Watch" count={watch.length} defaultOpen={false}>
-                        {watch.map(renderItem)}
+                        {watch.map((i) => renderItem(i, false))}
                       </CollapsibleGroup>
                     )}
                   </div>

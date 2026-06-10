@@ -10,6 +10,7 @@ import { SummaryCard } from '@/app/components/SummaryCard'
 import { OwnerAvatar } from '@/app/components/OwnerAvatar'
 import { ScorePill } from '@/app/components/ScorePill'
 import { SearchInput } from '@/app/components/SearchInput'
+import { CollapsibleSection } from '@/app/components/CollapsibleSection'
 
 function formatARR(n: number) {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`
@@ -200,8 +201,7 @@ export default async function HealthPage({
       </div>
 
       {/* Health by stage */}
-      <div>
-        <SectionHeader title="Health by stage" />
+      <CollapsibleSection title="Health by stage">
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
           <table className="w-full text-sm">
             <thead className="border-b border-slate-100 bg-slate-50 text-xs font-medium uppercase text-slate-500">
@@ -237,14 +237,14 @@ export default async function HealthPage({
             </tbody>
           </table>
         </div>
-      </div>
+      </CollapsibleSection>
 
       {/* Account health table */}
-      <div>
-        <SectionHeader
-          title="Account health"
-          description={`${sorted.length} companies · sorted by health score · click name for detail`}
-        />
+      <CollapsibleSection
+        title="Account health"
+        count={sorted.length}
+        subtitle="sorted by health score · click name for detail"
+      >
         <div className="max-h-[70vh] overflow-y-auto overflow-x-auto rounded-lg border border-slate-200 bg-white">
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-10 border-b border-slate-100 bg-slate-50 text-xs font-medium uppercase text-slate-500">
@@ -254,11 +254,11 @@ export default async function HealthPage({
                 <th className="px-4 py-2 text-left">
                   Usage <ScoreInfo type="usage" />
                 </th>
-                <th className="px-4 py-2 text-center">6-wk</th>
+                <th className="px-4 py-2 text-center">8-wk</th>
                 <th className="px-4 py-2 text-left">
                   Interactions <ScoreInfo type="interactions" />
                 </th>
-                <th className="px-4 py-2 text-center">6-wk</th>
+                <th className="px-4 py-2 text-center">8-wk</th>
                 <th className="px-4 py-2 text-left">Renewal</th>
               </tr>
             </thead>
@@ -315,7 +315,7 @@ export default async function HealthPage({
             </tbody>
           </table>
         </div>
-      </div>
+      </CollapsibleSection>
     </div>
   )
 }

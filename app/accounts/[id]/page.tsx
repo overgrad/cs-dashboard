@@ -123,12 +123,16 @@ export default async function AccountPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const [account, scoreHistory] = await Promise.all([
+  const [account, scoreHistory, queueActions] = await Promise.all([
     prisma.account.findUnique({ where: { id } }),
     prisma.scoreHistory.findMany({
       where: { accountId: id },
       orderBy: { week: 'desc' },
       take: 8,
+    }),
+    prisma.queueAction.findMany({
+      where: { accountId: id },
+      orderBy: { createdAt: 'desc' },
     }),
   ])
   if (!account) notFound()
@@ -218,6 +222,45 @@ export default async function AccountPage({
     </div>
   )
 
+  // ── Activity tab ──
+  const ACTION_LABEL: Record<string, string> = {
+    complete: 'Marked complete',
+    dismiss: 'Dismissed',
+    snooze: 'Snoozed 1 week',
+  }
+  const ACTION_COLOR: Record<string, string> = {
+    complete: 'bg-emerald-100 text-emerald-700',
+    dismiss: 'bg-slate-100 text-slate-600',
+    snooze: 'bg-amber-100 text-amber-700',
+  }
+  const activityTab = (
+    <div className="py-2">
+      {queueActions.length === 0 ? (
+        <p className="text-sm text-slate-400">No actions logged yet.</p>
+      ) : (
+        <div className="space-y-3">
+          {queueActions.map((a) => (
+            <div key={a.id} className="flex items-start gap-3 rounded-lg border border-slate-100 bg-slate-50 p-3">
+              <span className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${ACTION_COLOR[a.type] ?? 'bg-slate-100 text-slate-600'}`}>
+                {ACTION_LABEL[a.type] ?? a.type}
+              </span>
+              <div className="min-w-0 flex-1">
+                {a.note && <p className="text-sm text-slate-700">{a.note}</p>}
+                <p className="mt-0.5 text-xs text-slate-400">
+                  {a.createdBy ? `${a.createdBy} · ` : ''}
+                  {a.createdAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  {a.suppressUntil && a.suppressUntil > new Date()
+                    ? ` · snoozed until ${a.suppressUntil.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+                    : ''}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+
   return (
     <div className="space-y-6">
       {/* Back link */}
@@ -294,6 +337,7 @@ export default async function AccountPage({
             { label: 'Usage', content: usageTab },
             { label: 'Interactions', content: interactionsTab },
             { label: 'Notes', content: notesTab },
+            { label: 'Activity', content: activityTab },
           ]}
         />
       </div>

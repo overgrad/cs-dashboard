@@ -32,8 +32,8 @@ model Account {
   lastDataUploadDate          DateTime? @map("last_data_upload_date")
   totalLicensedSeats          Int?      @map("total_licensed_seats")
   // Scoring inputs populated by PostHog sync (Milestone 3)
-  wauEducators                Int?      @map("wau_educators")
-  wauStudents                 Int?      @map("wau_students")
+  wauEducators                Float?    @map("wau_educators")
+  wauStudents                 Float?    @map("wau_students")
   // Scoring inputs populated by Freshdesk/Granola sync (Milestone 4)
   lastCsTouchpoint            DateTime? @map("last_cs_touchpoint")
   lastCustomerContact         DateTime? @map("last_customer_contact")
@@ -46,8 +46,23 @@ model Account {
 
   scoreHistory ScoreHistory[]
   alerts       Alert[]
+  queueActions QueueAction[]
 
   @@map("accounts")
+}
+
+model QueueAction {
+  id            String    @id @default(cuid())
+  accountId     String    @map("account_id")
+  type          String    // 'complete' | 'dismiss' | 'snooze'
+  note          String?
+  suppressUntil DateTime? @map("suppress_until")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  createdBy     String?   @map("created_by")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@map("queue_actions")
 }
 
 model ScoreHistory {
