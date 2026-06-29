@@ -4,9 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint"
+  },
+  "engines": {
+    "node": "22.x"
   },
   "dependencies": {
     "@hubspot/api-client": "^13.5.0",
