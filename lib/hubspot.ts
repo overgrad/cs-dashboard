@@ -193,6 +193,7 @@ export interface CompanyData {
   companyName: string | null
   overgradId: string | null
   lifecycleStage: string | null
+  wauEducators: number | null
   studentsCompletedSetupPct: number | null
   careerMilestoneCompletionPct: number | null
   collegeMilestoneCompletionPct: number | null
@@ -204,6 +205,7 @@ const COMPANY_PROPERTIES = [
   'name',
   'lifecyclestage',
   HS_PROPS.OVERGRAD_ID,
+  HS_PROPS.WAU_EDUCATORS,
   HS_PROPS.STUDENTS_COMPLETED_SETUP_PCT,
   HS_PROPS.CAREER_MILESTONE_PCT,
   HS_PROPS.COLLEGE_MILESTONE_PCT,
@@ -257,6 +259,7 @@ export async function getCompanyData(dealIds: string[]): Promise<Map<string, Com
           companyName: p['name'] ?? null,
           lifecycleStage: p['lifecyclestage'] ?? null,
           overgradId: p[HS_PROPS.OVERGRAD_ID] ?? null,
+          wauEducators: parseFloat_(p[HS_PROPS.WAU_EDUCATORS]),
           studentsCompletedSetupPct: parseFloat_(p[HS_PROPS.STUDENTS_COMPLETED_SETUP_PCT]),
           careerMilestoneCompletionPct: parseFloat_(p[HS_PROPS.CAREER_MILESTONE_PCT]),
           collegeMilestoneCompletionPct: parseFloat_(p[HS_PROPS.COLLEGE_MILESTONE_PCT]),

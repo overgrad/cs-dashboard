@@ -20,6 +20,7 @@ export const HS_PROPS = {
   INVOICE_BALANCE_DUE: 'hs_balance_due',
 
   // Company-level properties (Admin Console data synced into HubSpot)
+  WAU_EDUCATORS: 'wau',
   STUDENTS_COMPLETED_SETUP_PCT: 'of_students_that_setup_accounts',
   CAREER_MILESTONE_PCT: 'career_milestone_completion',
   COLLEGE_MILESTONE_PCT: 'college_milestone_completion',

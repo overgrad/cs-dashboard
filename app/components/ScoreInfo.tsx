@@ -39,7 +39,7 @@ export function ScoreInfo({ type }: Props) {
         i
       </button>
       {open && (
-        <div className="absolute bottom-full left-1/2 z-50 mb-2 w-56 -translate-x-1/2 rounded-lg border border-slate-200 bg-white p-3 shadow-lg">
+        <div className="absolute top-full left-1/2 z-50 mt-2 w-56 -translate-x-1/2 rounded-lg border border-slate-200 bg-white p-3 shadow-lg">
           <p className="mb-1.5 text-xs font-semibold text-slate-700 capitalize">{type} score components</p>
           <ul className="space-y-0.5">
             {dims.map((d) => (
