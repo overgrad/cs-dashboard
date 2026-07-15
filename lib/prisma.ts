@@ -7,7 +7,12 @@ const globalForPrisma = globalThis as unknown as {
 
 function createPrismaClient() {
   const connectionString = process.env.DATABASE_URL!
-  const adapter = new PrismaPg(connectionString)
+  // Heroku Postgres requires SSL but presents a cert pg can't verify on its own.
+  const isLocal = /localhost|127\.0\.0\.1/.test(connectionString)
+  const adapter = new PrismaPg({
+    connectionString,
+    ssl: isLocal ? undefined : { rejectUnauthorized: false },
+  })
   return new PrismaClient({ adapter })
 }
 
