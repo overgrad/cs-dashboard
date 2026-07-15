@@ -103,6 +103,91 @@ export async function getDealsWithLineItems(dealIds: string[]): Promise<Set<stri
   return withLineItems
 }
 
+const INVOICE_PROPERTIES = [
+  HS_PROPS.INVOICE_STATUS,
+  HS_PROPS.INVOICE_DUE_DATE,
+  HS_PROPS.INVOICE_BALANCE_DUE,
+]
+
+export interface UnpaidInvoiceSummary {
+  count: number
+  balance: number
+  oldestDueDate: Date | null
+}
+
+// Fetch unpaid invoice summaries (status=open with a balance due) for a batch of deal IDs.
+// HubSpot Commerce Invoices associate to deals via a native association — a deal can have
+// several invoices (e.g. multi-year payment plans), so this rolls them up per deal.
+export async function getUnpaidInvoices(dealIds: string[]): Promise<Map<string, UnpaidInvoiceSummary>> {
+  const result = new Map<string, UnpaidInvoiceSummary>()
+  const chunkSize = 100
+
+  // Step 1: deal → invoice associations
+  const dealToInvoiceIds = new Map<string, string[]>()
+  for (let i = 0; i < dealIds.length; i += chunkSize) {
+    const chunk = dealIds.slice(i, i + chunkSize)
+    try {
+      const response = await hubspotClient.crm.associations.v4.batchApi.getPage(
+        'deals',
+        'invoices',
+        { inputs: chunk.map((id) => ({ id })) }
+      )
+      for (const r of response.results) {
+        if (r.to && r.to.length > 0) {
+          dealToInvoiceIds.set(r._from.id, r.to.map((t) => String(t.toObjectId)))
+        }
+      }
+    } catch {
+      // skip chunk on error
+    }
+  }
+
+  // Step 2: batch fetch invoice properties
+  const allInvoiceIds = [...new Set([...dealToInvoiceIds.values()].flat())]
+  const invoiceDataMap = new Map<string, { status: string | null; dueDate: Date | null; balance: number }>()
+  for (let i = 0; i < allInvoiceIds.length; i += chunkSize) {
+    const chunk = allInvoiceIds.slice(i, i + chunkSize)
+    try {
+      const response = await hubspotClient.crm.commerce.invoices.batchApi.read({
+        inputs: chunk.map((id) => ({ id })),
+        properties: INVOICE_PROPERTIES,
+        propertiesWithHistory: [],
+      })
+      for (const invoice of response.results) {
+        const p = invoice.properties ?? {}
+        invoiceDataMap.set(String(invoice.id), {
+          status: p[HS_PROPS.INVOICE_STATUS] ?? null,
+          dueDate: p[HS_PROPS.INVOICE_DUE_DATE] ? new Date(p[HS_PROPS.INVOICE_DUE_DATE]!) : null,
+          balance: p[HS_PROPS.INVOICE_BALANCE_DUE] ? parseFloat(p[HS_PROPS.INVOICE_BALANCE_DUE]!) : 0,
+        })
+      }
+    } catch {
+      // skip chunk on error
+    }
+  }
+
+  // Step 3: combine — deal → unpaid invoice summary ("sent, not paid" = open status w/ balance > 0)
+  for (const [dealId, invoiceIds] of dealToInvoiceIds) {
+    const unpaid = invoiceIds
+      .map((id) => invoiceDataMap.get(id))
+      .filter((inv): inv is NonNullable<typeof inv> => !!inv && inv.status === 'open' && inv.balance > 0)
+
+    if (unpaid.length > 0) {
+      result.set(dealId, {
+        count: unpaid.length,
+        balance: unpaid.reduce((sum, inv) => sum + inv.balance, 0),
+        oldestDueDate: unpaid.reduce<Date | null>((oldest, inv) => {
+          if (!inv.dueDate) return oldest
+          if (!oldest || inv.dueDate < oldest) return inv.dueDate
+          return oldest
+        }, null),
+      })
+    }
+  }
+
+  return result
+}
+
 export interface CompanyData {
   companyId: string
   companyName: string | null

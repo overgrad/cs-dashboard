@@ -81,6 +81,11 @@ export default async function RenewalsPage({
   )
   const projectedARR = accounts.reduce((sum, a) => sum + (a.arr ?? 0), 0)
 
+  const unpaidInvoices = accounts
+    .filter((a) => a.unpaidInvoiceCount > 0)
+    .sort((a, b) => (a.unpaidInvoiceDueDate?.getTime() ?? Infinity) - (b.unpaidInvoiceDueDate?.getTime() ?? Infinity))
+  const totalUnpaidBalance = unpaidInvoices.reduce((sum, a) => sum + a.unpaidInvoiceBalance, 0)
+
   // Stage breakdown
   const byStage = new Map<string, { count: number; arr: number }>()
   for (const a of accounts) {
@@ -130,7 +135,7 @@ export default async function RenewalsPage({
       {/* Summary cards */}
       <div>
         <SectionHeader title="Overview" />
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
           <StatCard
             label="Outstanding renewals"
             value={outstandingAccounts.length}
@@ -141,6 +146,12 @@ export default async function RenewalsPage({
             value={needsAttention.length}
             sub="No close date, line items, or contact"
             variant={needsAttention.length > 0 ? 'warning' : 'default'}
+          />
+          <StatCard
+            label="Unpaid invoices"
+            value={unpaidInvoices.length}
+            sub={formatARR(totalUnpaidBalance) + ' outstanding'}
+            variant={unpaidInvoices.length > 0 ? 'warning' : 'default'}
           />
           <StatCard
             label="Projected ARR"
@@ -219,6 +230,72 @@ export default async function RenewalsPage({
                                 </span>
                               ))}
                             </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </CollapsibleSection>
+          )}
+
+          {/* Unpaid invoices */}
+          {unpaidInvoices.length > 0 && (
+            <CollapsibleSection
+              title="Unpaid invoices"
+              count={unpaidInvoices.length}
+              subtitle="Invoice sent, payment not received"
+            >
+              <div className="max-h-[50vh] overflow-auto rounded-lg border border-red-200 bg-white">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 z-10 border-b border-red-100 bg-red-50 text-xs font-medium uppercase text-slate-500">
+                    <tr>
+                      <th className="px-4 py-2 text-left">Account</th>
+                      <th className="px-4 py-2 text-left">Owner</th>
+                      <th className="px-4 py-2 text-right">Balance due</th>
+                      <th className="px-4 py-2 text-left">Due date</th>
+                      <th className="px-4 py-2 text-right">Invoices</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {unpaidInvoices.map((a) => {
+                      const days = daysUntil(a.unpaidInvoiceDueDate)
+                      const overdue = days !== null && days < 0
+
+                      return (
+                        <tr key={a.id} className="hover:bg-slate-50">
+                          <td className="px-4 py-3 font-medium text-slate-900">
+                            <a
+                              href={`/accounts/${a.id}`}
+                              className="hover:text-indigo-600 hover:underline"
+                            >
+                              {a.name}
+                            </a>
+                          </td>
+                          <td className="px-4 py-3">
+                            {a.owner ? (
+                              <div className="flex items-center gap-2">
+                                <OwnerAvatar name={a.owner} />
+                                <span className="text-sm text-slate-700">{a.owner}</span>
+                              </div>
+                            ) : <span className="text-slate-400">—</span>}
+                          </td>
+                          <td className="px-4 py-3 text-right font-medium text-slate-800">
+                            {formatARR(a.unpaidInvoiceBalance)}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="text-slate-800">{formatDate(a.unpaidInvoiceDueDate)}</span>
+                            {days !== null && (
+                              <span
+                                className={`ml-2 text-xs font-semibold ${overdue ? 'text-red-600' : 'text-slate-400'}`}
+                              >
+                                {overdue ? `${Math.abs(days)}d overdue` : `${days}d`}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-right text-slate-600">
+                            {a.unpaidInvoiceCount}
                           </td>
                         </tr>
                       )

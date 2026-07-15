@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getAllDeals, getOwner, getContact, getRenewalsPipelineInfo, getDealsWithLineItems, getCompanyData, type CompanyData } from '@/lib/hubspot'
+import { getAllDeals, getOwner, getContact, getRenewalsPipelineInfo, getDealsWithLineItems, getCompanyData, getUnpaidInvoices, type CompanyData } from '@/lib/hubspot'
 import { HS_PROPS } from '@/lib/config'
 
 type Deal = Awaited<ReturnType<typeof getAllDeals>>[number]
@@ -46,9 +46,10 @@ export async function POST(request: Request) {
     const deals = await getAllDeals(pipelineInfo?.pipelineId)
     const dealIds = deals.map((d) => d.id)
 
-    const [dealsWithLineItems, companyDataMap] = await Promise.all([
+    const [dealsWithLineItems, companyDataMap, unpaidInvoicesMap] = await Promise.all([
       getDealsWithLineItems(dealIds),
       getCompanyData(dealIds),
+      getUnpaidInvoices(dealIds),
     ])
 
     // Group deals by company ID (orphan deals use their own deal ID as key)
@@ -98,6 +99,17 @@ export async function POST(request: Request) {
 
         const seatsRaw = p[HS_PROPS.TOTAL_LICENSED_SEATS]
 
+        const companyUnpaid = deals
+          .map((d) => unpaidInvoicesMap.get(d.id))
+          .filter((u): u is NonNullable<typeof u> => !!u)
+        const unpaidInvoiceCount = companyUnpaid.reduce((sum, u) => sum + u.count, 0)
+        const unpaidInvoiceBalance = companyUnpaid.reduce((sum, u) => sum + u.balance, 0)
+        const unpaidInvoiceDueDate = companyUnpaid.reduce<Date | null>((oldest, u) => {
+          if (!u.oldestDueDate) return oldest
+          if (!oldest || u.oldestDueDate < oldest) return u.oldestDueDate
+          return oldest
+        }, null)
+
         const fields = {
           hubspotId: primary.id,
           overgradId: companyData.overgradId,
@@ -110,6 +122,9 @@ export async function POST(request: Request) {
           primaryContact: contact?.name ?? null,
           contactEmail: contact?.email ?? null,
           hasLineItems: deals.some((d) => dealsWithLineItems.has(d.id)),
+          unpaidInvoiceCount,
+          unpaidInvoiceBalance,
+          unpaidInvoiceDueDate,
           onboardingDate,
           isOnboarding,
           totalLicensedSeats: seatsRaw ? parseInt(seatsRaw) : null,

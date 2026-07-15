@@ -14,6 +14,11 @@ export const HS_PROPS = {
   // Deal-level properties
   TOTAL_LICENSED_SEATS: 'total_licensed_seats',
 
+  // Invoice properties (HubSpot Commerce Invoices object — native, not custom)
+  INVOICE_STATUS: 'hs_invoice_status',           // draft | open | paid | voided
+  INVOICE_DUE_DATE: 'hs_due_date',
+  INVOICE_BALANCE_DUE: 'hs_balance_due',
+
   // Company-level properties (Admin Console data synced into HubSpot)
   STUDENTS_COMPLETED_SETUP_PCT: 'of_students_that_setup_accounts',
   CAREER_MILESTONE_PCT: 'career_milestone_completion',
