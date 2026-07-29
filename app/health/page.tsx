@@ -40,6 +40,14 @@ function daysUntil(d: Date | null) {
   return Math.ceil((d.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
 }
 
+function formatCount(n: number | null) {
+  return n === null ? <span className="text-slate-300">—</span> : n.toLocaleString()
+}
+
+function formatPct(n: number | null) {
+  return n === null ? <span className="text-slate-300">—</span> : `${Math.round(n)}%`
+}
+
 export default async function HealthPage({
   searchParams,
 }: {
@@ -251,6 +259,8 @@ export default async function HealthPage({
               <tr>
                 <th className="px-4 py-2 text-left">Account</th>
                 <th className="px-4 py-2 text-left">Owner</th>
+                <th className="px-4 py-2 text-right">Educators</th>
+                <th className="px-4 py-2 text-right">Login %</th>
                 <th className="px-4 py-2 text-left">
                   Usage <ScoreInfo type="usage" />
                 </th>
@@ -291,6 +301,12 @@ export default async function HealthPage({
                       ) : (
                         <span className="text-slate-400">—</span>
                       )}
+                    </td>
+                    <td className="px-4 py-3 text-right text-slate-600">
+                      {formatCount(account.educatorAccountCount)}
+                    </td>
+                    <td className="px-4 py-3 text-right text-slate-600">
+                      {formatPct(account.educatorLoginPct)}
                     </td>
                     <td className="px-4 py-3"><ScorePill score={usage.score} /></td>
                     <td className="px-4 py-3 text-center">

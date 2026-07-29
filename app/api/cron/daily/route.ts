@@ -19,19 +19,27 @@ export async function GET(request: Request) {
   const syncRes = await fetch(`${base}/api/sync/hubspot`, { method: 'POST', headers })
   const syncData = await syncRes.json()
 
-  // 2. Freshdesk ticket sync (parallel with notes — both read-only from external APIs)
-  const [freshdeskRes, notesRes] = await Promise.all([
+  // 2. Freshdesk ticket sync + internal DB educator stats (parallel with notes — all read-only)
+  const [freshdeskRes, notesRes, internalDbRes] = await Promise.all([
     fetch(`${base}/api/sync/freshdesk`, { method: 'POST', headers }),
     fetch(`${base}/api/sync/notes`, { method: 'POST', headers }),
+    fetch(`${base}/api/sync/internal-db`, { method: 'POST', headers }),
   ])
-  const [freshdeskData, notesData] = await Promise.all([
+  const [freshdeskData, notesData, internalDbData] = await Promise.all([
     freshdeskRes.json(),
     notesRes.json(),
+    internalDbRes.json(),
   ])
 
   // 3. Score computation + alerts
   const scoreRes = await fetch(`${base}/api/score/run`, { method: 'POST', headers })
   const scoreData = await scoreRes.json()
 
-  return NextResponse.json({ sync: syncData, freshdesk: freshdeskData, notes: notesData, score: scoreData })
+  return NextResponse.json({
+    sync: syncData,
+    freshdesk: freshdeskData,
+    notes: notesData,
+    internalDb: internalDbData,
+    score: scoreData,
+  })
 }
