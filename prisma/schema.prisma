@@ -37,6 +37,10 @@ model Account {
   // Scoring inputs populated by PostHog sync (Milestone 3)
   wauEducators                Float?    @map("wau_educators")
   wauStudents                 Float?    @map("wau_students")
+  // Educator login stats sourced from OverGrad's internal product DB — NOT YET CONNECTED.
+  // See lib/internalDb.ts for the integration point developers need to fill in.
+  educatorAccountCount        Int?      @map("educator_account_count")
+  educatorLoginPct            Float?    @map("educator_login_pct")
   // Scoring inputs populated by Freshdesk/Granola sync (Milestone 4)
   lastCsTouchpoint            DateTime? @map("last_cs_touchpoint")
   lastCustomerContact         DateTime? @map("last_customer_contact")
