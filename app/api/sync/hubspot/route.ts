@@ -72,6 +72,7 @@ export async function POST(request: Request) {
     let synced = 0
     let skipped = 0
     let errors = 0
+    const errorSamples: { company: string; error: string }[] = []
 
     for (const [companyId, { companyData, deals }] of companiesMap) {
       // Only sync confirmed customers — orphan deals and non-customers are excluded
@@ -145,8 +146,12 @@ export async function POST(request: Request) {
         }
         syncedCompanyIds.push(companyId)
         synced++
-      } catch {
+      } catch (err) {
         errors++
+        const message = err instanceof Error ? err.message : String(err)
+        const label = companyData.companyName ?? companyId
+        console.error(`[sync/hubspot] ${label}: ${message}`)
+        if (errorSamples.length < 10) errorSamples.push({ company: label, error: message.slice(0, 300) })
       }
     }
 
@@ -164,6 +169,7 @@ export async function POST(request: Request) {
       synced,
       skipped,
       errors,
+      errorSamples,
       deleted: deleted.count,
       total: deals.length,
       companies: companiesMap.size,
