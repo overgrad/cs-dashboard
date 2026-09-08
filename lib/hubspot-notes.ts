@@ -27,8 +27,8 @@ async function batchAssociations(
           map.set(result._from.id, result.to.map((t) => String(t.toObjectId)))
         }
       }
-    } catch {
-      // skip chunk on error
+    } catch (err) {
+      console.error(`[hubspot-notes] batch failed (${chunk.length} ids): ${err instanceof Error ? err.message : String(err)}`)
     }
   }
   return map
@@ -51,8 +51,8 @@ async function getMeetingsByIds(meetingIds: string[]): Promise<Map<string, DealN
           : new Date(meeting.createdAt)
         map.set(meeting.id, { id: meeting.id, body, timestamp })
       }
-    } catch {
-      // skip chunk on error
+    } catch (err) {
+      console.error(`[hubspot-notes] batch failed (${chunk.length} ids): ${err instanceof Error ? err.message : String(err)}`)
     }
   }
   return map
@@ -82,8 +82,8 @@ async function getEmailsByIds(
           direction: String(p.hs_email_direction ?? ''),
         })
       }
-    } catch {
-      // skip chunk on error
+    } catch (err) {
+      console.error(`[hubspot-notes] batch failed (${chunk.length} ids): ${err instanceof Error ? err.message : String(err)}`)
     }
   }
   return map

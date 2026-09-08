@@ -1,8 +1,13 @@
 import hubspot from '@hubspot/api-client'
 import { HS_PROPS } from './config'
 
+// Private apps are limited to ~100 requests per 10s. The syncs fan out batch reads in
+// parallel, so throttle through the client's shared limiter and retry on 429/5xx
+// (retry waits 10s × attempt on a rolling-window 429).
 export const hubspotClient = new hubspot.Client({
   accessToken: process.env.HUBSPOT_ACCESS_TOKEN,
+  numberOfApiCallRetries: 5,
+  limiterOptions: { minTime: 125, maxConcurrent: 4, id: 'cs-dashboard-hubspot' },
 })
 
 export const DEAL_PROPERTIES = [
