@@ -1,6 +1,7 @@
 import type { Account } from '@/app/generated/prisma/client'
 import { prisma } from './prisma'
 import {
+  alertContext,
   sendToChannel,
   sendDm,
   buildRenewalAlert,
@@ -280,12 +281,19 @@ async function checkInactivityAlerts(account: Account) {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
+export interface AlertOptions {
+  // Evaluate and record alerts but do not post to Slack (cooldown still applies)
+  silent?: boolean
+}
+
 // Renewal alerts — call for every deal with an upcoming renewal (next 12 months)
-export async function runRenewalAlerts(account: Account) {
-  await Promise.allSettled([
-    checkRenewalAlerts(account),
-    checkMissingDataAlerts(account),
-  ])
+export async function runRenewalAlerts(account: Account, opts: AlertOptions = {}) {
+  await alertContext.run({ silent: !!opts.silent }, () =>
+    Promise.allSettled([
+      checkRenewalAlerts(account),
+      checkMissingDataAlerts(account),
+    ]),
+  )
 }
 
 // Health/activity alerts — call once per company (primary deal only)
@@ -293,11 +301,14 @@ export async function runHealthAlerts(
   account: Account,
   previousScores: { usageScore: number | null; interactionsScore: number | null } | null,
   currentUsage: number | null,
-  currentInteractions: number | null
+  currentInteractions: number | null,
+  opts: AlertOptions = {},
 ) {
-  await Promise.allSettled([
-    checkScoreDropAlerts(account, previousScores, currentUsage, currentInteractions),
-    checkDivergenceAlert(account, previousScores, currentUsage, currentInteractions),
-    checkInactivityAlerts(account),
-  ])
+  await alertContext.run({ silent: !!opts.silent }, () =>
+    Promise.allSettled([
+      checkScoreDropAlerts(account, previousScores, currentUsage, currentInteractions),
+      checkDivergenceAlert(account, previousScores, currentUsage, currentInteractions),
+      checkInactivityAlerts(account),
+    ]),
+  )
 }

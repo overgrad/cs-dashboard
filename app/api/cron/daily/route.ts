@@ -8,8 +8,8 @@ type Handler = (request: Request) => Promise<Response>
 
 // Invoke a sync route handler in-process (no HTTP hop, so Heroku's 30s router
 // timeout does not apply) and log its result.
-async function runStep(name: string, handler: Handler) {
-  const request = new Request(`http://internal/${name}`, {
+async function runStep(name: string, handler: Handler, query = '') {
+  const request = new Request(`http://internal/${name}${query}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -36,19 +36,23 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  // ?silent=1 — run everything, but record alerts without posting to Slack
+  const silentParam = new URL(request.url).searchParams.get('silent')
+  const silent = silentParam === '1' || silentParam === 'true'
+
   after(async () => {
-    console.log('[cron] daily run started')
+    console.log(`[cron] daily run started${silent ? ' (silent alerts)' : ''}`)
     await runStep('sync/hubspot', syncHubspot)
     await Promise.all([
       runStep('sync/freshdesk', syncFreshdesk),
       runStep('sync/notes', syncNotes),
     ])
-    await runStep('score/run', runScores)
+    await runStep('score/run', runScores, silent ? '?silent=1' : '')
     console.log('[cron] daily run finished')
   })
 
   return NextResponse.json(
-    { started: true, message: 'Daily sync running in background; see server logs for results.' },
+    { started: true, silentAlerts: silent, message: 'Daily sync running in background; see server logs for results.' },
     { status: 202 },
   )
 }

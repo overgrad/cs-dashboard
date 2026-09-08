@@ -11,6 +11,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  // ?silent=1 — evaluate and record alerts without posting to Slack
+  const silentParam = new URL(request.url).searchParams.get('silent')
+  const silent = silentParam === '1' || silentParam === 'true'
+
   const weekStart = getWeekStart()
   const now = new Date()
   const twelveMonthsOut = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000)
@@ -71,12 +75,12 @@ export async function POST(request: Request) {
       const hasUpcomingRenewal =
         account.renewalDate && account.renewalDate > now && account.renewalDate <= twelveMonthsOut
       if (hasUpcomingRenewal) {
-        await runRenewalAlerts(account)
+        await runRenewalAlerts(account, { silent })
       }
 
       // Health alerts: only for the primary deal per company
       if (primaryIds.has(account.id)) {
-        await runHealthAlerts(account, previousScores ?? null, usageResult.score, interactionsResult.score)
+        await runHealthAlerts(account, previousScores ?? null, usageResult.score, interactionsResult.score, { silent })
       }
 
       scored++
@@ -85,7 +89,7 @@ export async function POST(request: Request) {
     }
   }
 
-  return NextResponse.json({ scored, errors, total: accounts.length, week: weekStart })
+  return NextResponse.json({ scored, errors, total: accounts.length, week: weekStart, silentAlerts: silent })
 }
 
 function getWeekStart(): Date {
