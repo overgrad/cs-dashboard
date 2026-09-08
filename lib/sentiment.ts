@@ -51,8 +51,12 @@ Sentiment definitions:
     if (!response.ok) return null
 
     const data = await response.json()
-    const text = data.content?.[0]?.text ?? ''
-    const parsed = JSON.parse(text) as SentimentResult
+    const text: string = data.content?.[0]?.text ?? ''
+    // Claude often wraps the JSON in a ```json fence — extract the object itself
+    const start = text.indexOf('{')
+    const end = text.lastIndexOf('}')
+    if (start === -1 || end === -1) return null
+    const parsed = JSON.parse(text.slice(start, end + 1)) as SentimentResult
     if (!['positive', 'neutral', 'negative'].includes(parsed.sentiment)) return null
     return parsed
   } catch {
