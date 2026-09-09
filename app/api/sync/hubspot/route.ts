@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getAllDeals, getOwner, getContact, getCompanyContacts, getRenewalsPipelineInfo, getDealsWithLineItems, getCompanyData, getUnpaidInvoices, type CompanyData, type ContactInfo } from '@/lib/hubspot'
+import { getAllDeals, getOwner, getContact, getCompanyContacts, getAllCustomerCompanies, getRenewalsPipelineInfo, getDealsWithLineItems, getCompanyData, getUnpaidInvoices, type CompanyData, type ContactInfo } from '@/lib/hubspot'
 import { HS_PROPS, THRESHOLDS } from '@/lib/config'
 import { computeArrForCompanies } from '@/lib/arr-hubspot'
 
@@ -36,7 +36,10 @@ const EMPTY_COMPANY: Omit<CompanyData, 'companyId'> = {
   lastDataUploadDate: null,
   onboardingCompletionDate: null,
   domain: null,
+  lastEducatorActivity: null,
 }
+
+const NO_RENEWAL_DEAL_STAGE = 'No renewal deal yet'
 
 // Pick the best champion among a company's contacts: a counselor/director/principal-type
 // title first, then whoever was most recently active in the product.
@@ -87,6 +90,17 @@ export async function POST(request: Request) {
       companiesMap.get(key)!.deals.push(deal)
     }
 
+    // Seed every lifecycle=customer company, so new logos whose only closed-won deal is in the
+    // sales pipeline (no renewal deal yet) still get an account row.
+    const allCustomers = await getAllCustomerCompanies()
+    let customersWithoutRenewalDeal = 0
+    for (const [companyId, cd] of allCustomers) {
+      if (!companiesMap.has(companyId)) {
+        companiesMap.set(companyId, { companyData: cd, deals: [] })
+        customersWithoutRenewalDeal++
+      }
+    }
+
     // ARR per company, Finance definition (see lib/arr.ts)
     const customerCompanyIds = [...companiesMap.entries()]
       .filter(([, v]) => v.companyData.lifecycleStage === 'customer')
@@ -115,10 +129,18 @@ export async function POST(request: Request) {
         continue
       }
       try {
-        const primary = pickPrimaryDeal(deals)
-        const p = primary.properties
+        const arrInfo = arrByCompany.get(companyId) ?? null
+        // Primary deal: the renewals-pipeline deal closest to today; for customers without one,
+        // fall back to their latest closed-won deal (any pipeline) and treat its contract end as the renewal.
+        const primary = deals.length > 0 ? pickPrimaryDeal(deals) : null
+        const latestClosedWon = arrInfo?.deals[0] ?? null
+        if (!primary && !latestClosedWon) {
+          skipped++
+          continue
+        }
+        const p: Record<string, string | null> = primary?.properties ?? {}
 
-        const ownerId = p[HS_PROPS.OWNER_ID] ?? ''
+        const ownerId = (primary ? p[HS_PROPS.OWNER_ID] : latestClosedWon?.ownerId) ?? ''
         if (!ownerCache.has(ownerId)) {
           ownerCache.set(ownerId, ownerId ? await getOwner(ownerId) : null)
         }
@@ -126,7 +148,7 @@ export async function POST(request: Request) {
 
         // Primary contact: the deal's contact, else the best contact on the company
         const companyContacts = contactsByCompany.get(companyId) ?? []
-        const contactId = primary.associations?.contacts?.results?.[0]?.id
+        const contactId = primary?.associations?.contacts?.results?.[0]?.id
         const dealContact = contactId ? await getContact(contactId) : null
         const contact = dealContact ?? pickCompanyContact(companyContacts)
 
@@ -135,6 +157,8 @@ export async function POST(request: Request) {
         const activityDates = [...companyContacts, ...(dealContact ? [dealContact] : [])]
           .map((c) => c.lastOvergradActivity)
           .filter((d): d is Date => !!d)
+        // The product also writes last_educator_activity on the company itself — take the newest of both
+        if (companyData.lastEducatorActivity) activityDates.push(companyData.lastEducatorActivity)
         const lastEducatorActivity = activityDates.length > 0
           ? new Date(Math.max(...activityDates.map((d) => d.getTime())))
           : null
@@ -159,17 +183,29 @@ export async function POST(request: Request) {
           return oldest
         }, null)
 
-        const arrInfo = arrByCompany.get(companyId) ?? null
+        // Renewal date: the renewal deal's close date, else the latest contract's end date
+        let renewalDate: Date | null = null
+        if (primary) {
+          renewalDate = p[HS_PROPS.CLOSE_DATE] ? new Date(p[HS_PROPS.CLOSE_DATE]!) : null
+        } else if (latestClosedWon) {
+          if (latestClosedWon.contractEnd) renewalDate = new Date(latestClosedWon.contractEnd + 'T00:00:00Z')
+          else if (latestClosedWon.closeDate) {
+            renewalDate = new Date(latestClosedWon.closeDate + 'T00:00:00Z')
+            renewalDate.setUTCFullYear(renewalDate.getUTCFullYear() + 1)
+          }
+        }
 
         const fields = {
-          hubspotId: primary.id,
+          hubspotId: primary?.id ?? latestClosedWon!.dealId,
           overgradId: companyData.overgradId,
-          name: companyData.companyName ?? p[HS_PROPS.DEAL_NAME] ?? 'Unnamed',
+          name: companyData.companyName ?? p[HS_PROPS.DEAL_NAME] ?? latestClosedWon?.dealName ?? 'Unnamed',
           domain: companyData.domain,
           owner: owner?.name ?? null,
           ownerEmail: owner?.email ?? null,
-          renewalDate: p[HS_PROPS.CLOSE_DATE] ? new Date(p[HS_PROPS.CLOSE_DATE]!) : null,
-          dealStage: pipelineInfo?.stageMap.get(p[HS_PROPS.DEAL_STAGE] ?? '') ?? p[HS_PROPS.DEAL_STAGE] ?? null,
+          renewalDate,
+          dealStage: primary
+            ? (pipelineInfo?.stageMap.get(p[HS_PROPS.DEAL_STAGE] ?? '') ?? p[HS_PROPS.DEAL_STAGE] ?? null)
+            : NO_RENEWAL_DEAL_STAGE,
           arr: arrInfo ? arrInfo.currentArr : null,
           latestContractArr: arrInfo?.latestContractArr ?? null,
           latestContractEnd: arrInfo?.latestContractEnd ? new Date(arrInfo.latestContractEnd) : null,
@@ -177,7 +213,7 @@ export async function POST(request: Request) {
           arrAsOf: arrInfo ? new Date() : null,
           primaryContact: contact?.name ?? null,
           contactEmail: contact?.email ?? null,
-          hasLineItems: deals.some((d) => dealsWithLineItems.has(d.id)),
+          hasLineItems: primary ? deals.some((d) => dealsWithLineItems.has(d.id)) : (latestClosedWon?.hasLineItems ?? false),
           unpaidInvoiceCount,
           unpaidInvoiceBalance,
           unpaidInvoiceDueDate,
@@ -211,7 +247,7 @@ export async function POST(request: Request) {
       }
     }
 
-    // Remove companies no longer in the renewals pipeline, plus any old deal-keyed rows
+    // Remove companies that are no longer customers, plus any old deal-keyed rows
     const deleted = await prisma.account.deleteMany({
       where: {
         OR: [
@@ -239,6 +275,7 @@ export async function POST(request: Request) {
           (c) => c.companyData.lifecycleStage === 'customer',
         ).length,
         arrComputed: arrByCompany.size,
+        customersWithoutRenewalDeal,
         arrUnmatchedProducts: [...unmatchedProducts],
       },
     })

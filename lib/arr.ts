@@ -32,6 +32,7 @@ export interface ArrDealInput {
   pipelineId: string | null
   contractStart: Date | null
   contractEnd: Date | null
+  ownerId?: string | null
 }
 
 export interface ArrLineItemInput {
@@ -55,6 +56,7 @@ export interface ArrDeal {
   closeDate: string | null
   contractStart: string | null
   contractEnd: string | null
+  ownerId: string | null
   active: boolean
   arrAmount: number
   nonArrAmount: number
@@ -164,6 +166,7 @@ export function computeCompanyArr(
       closeDate: iso(d.closeDate),
       contractStart: iso(d.contractStart),
       contractEnd: iso(d.contractEnd),
+      ownerId: d.ownerId ?? null,
       active,
       arrAmount: Math.round(arrAmount * 100) / 100,
       nonArrAmount: Math.round(nonArrAmount * 100) / 100,

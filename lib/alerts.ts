@@ -10,7 +10,7 @@ import {
   buildDivergenceAlert,
   buildInactivityAlert,
 } from './slack'
-import { THRESHOLDS, ALERT_COOLDOWN_HOURS } from './config'
+import { THRESHOLDS, ALERT_COOLDOWN_HOURS, ALERTS_DISABLED } from './config'
 import type { CompanyArr } from './arr'
 
 const CS_TEAM_CHANNEL = process.env.SLACK_CS_TEAM_CHANNEL ?? '#cs-team'
@@ -40,10 +40,12 @@ async function recordAlert(
   })
 }
 
+const isDisabled = (name: string) => ALERTS_DISABLED.has(name)
+
 // ─── Individual alert checks ──────────────────────────────────────────────────
 
 async function checkRenewalAlerts(account: Account) {
-  if (!account.renewalDate) return
+  if (isDisabled('renewal') || !account.renewalDate) return
 
   const daysUntil = Math.ceil(
     (account.renewalDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
@@ -95,6 +97,7 @@ async function checkRenewalAlerts(account: Account) {
 }
 
 async function checkMissingDataAlerts(account: Account) {
+  if (isDisabled('missing_data')) return
   const latestDeal = (account.arrBreakdown as CompanyArr | null)?.deals?.[0]
   const missing = [
     !account.renewalDate && 'close date',
@@ -139,7 +142,7 @@ async function checkScoreDropAlerts(
     previousScores.usageScore - currentUsage >= drop
   ) {
     const triggerType = 'usage_score_drop'
-    if (!(await hasRecentAlert(account.id, triggerType))) {
+    if (!isDisabled(triggerType) && !(await hasRecentAlert(account.id, triggerType))) {
       const { text, blocks } = buildScoreDropAlert({
         accountId: account.id,
         accountName: account.name,
@@ -160,7 +163,7 @@ async function checkScoreDropAlerts(
     previousScores.interactionsScore - currentInteractions >= drop
   ) {
     const triggerType = 'interactions_score_drop'
-    if (!(await hasRecentAlert(account.id, triggerType))) {
+    if (!isDisabled(triggerType) && !(await hasRecentAlert(account.id, triggerType))) {
       const { text, blocks } = buildScoreDropAlert({
         accountId: account.id,
         accountName: account.name,
@@ -193,7 +196,7 @@ async function checkDivergenceAlert(
   if (!usageUp || !interactionsDown) return
 
   const triggerType = 'score_divergence'
-  if (await hasRecentAlert(account.id, triggerType)) return
+  if (isDisabled(triggerType) || (await hasRecentAlert(account.id, triggerType))) return
 
   const { text, blocks } = buildDivergenceAlert({
     accountId: account.id,
@@ -216,13 +219,13 @@ async function checkDivergenceAlert(
 async function checkInactivityAlerts(account: Account) {
   const now = Date.now()
 
-  // No CS activity in 60 days
-  if (account.lastCsTouchpoint) {
+  // No CS activity (meeting, outgoing email, note, call, completed task) in N days
+  if (!isDisabled('no_cs_activity') && account.lastCsTouchpoint) {
     const daysSince = Math.floor(
       (now - account.lastCsTouchpoint.getTime()) / (1000 * 60 * 60 * 24)
     )
     if (daysSince >= THRESHOLDS.NO_ACTIVITY_ALERT_DAYS) {
-      const triggerType = 'no_cs_activity_60d'
+      const triggerType = 'no_cs_activity_60d' // trigger name kept stable for the cooldown; threshold is configurable
       if (!(await hasRecentAlert(account.id, triggerType))) {
         const { text, blocks } = buildInactivityAlert({
           accountId: account.id,
@@ -238,13 +241,14 @@ async function checkInactivityAlerts(account: Account) {
     }
   }
 
-  // No product usage in 30 days (via lastDataUploadDate as proxy until PostHog is live)
-  if (account.lastDataUploadDate) {
+  // No product usage: no educator at the account has been active in the product for N days.
+  // (Previously keyed off the SIS roster upload date, which is a yearly event, not usage.)
+  if (!isDisabled('no_product_usage') && account.lastEducatorActivity) {
     const daysSince = Math.floor(
-      (now - account.lastDataUploadDate.getTime()) / (1000 * 60 * 60 * 24)
+      (now - account.lastEducatorActivity.getTime()) / (1000 * 60 * 60 * 24)
     )
     if (daysSince >= THRESHOLDS.NO_USAGE_ALERT_DAYS) {
-      const triggerType = 'no_product_usage_30d'
+      const triggerType = 'no_product_usage_30d' // trigger name kept stable for the cooldown; threshold is configurable
       if (!(await hasRecentAlert(account.id, triggerType))) {
         const { text, blocks } = buildInactivityAlert({
           accountId: account.id,
@@ -263,7 +267,7 @@ async function checkInactivityAlerts(account: Account) {
   }
 
   // Champion gone dark
-  if (account.championStatus === 'gone_dark') {
+  if (!isDisabled('champion_gone_dark') && account.championStatus === 'gone_dark') {
     const triggerType = 'champion_gone_dark'
     if (!(await hasRecentAlert(account.id, triggerType))) {
       const { text, blocks } = buildInactivityAlert({

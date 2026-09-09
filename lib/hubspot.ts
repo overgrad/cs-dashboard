@@ -205,6 +205,7 @@ export interface CompanyData {
   lastDataUploadDate: Date | null
   onboardingCompletionDate: Date | null
   domain: string | null
+  lastEducatorActivity: Date | null  // written daily by the product for schools with active access
 }
 
 const COMPANY_PROPERTIES = [
@@ -219,6 +220,7 @@ const COMPANY_PROPERTIES = [
   HS_PROPS.COMMON_APP_LINKING,
   HS_PROPS.LAST_DATA_UPLOAD_DATE,
   HS_PROPS.ONBOARDING_COMPLETION_DATE,
+  HS_PROPS.COMPANY_LAST_EDUCATOR_ACTIVITY,
 ]
 
 // Fetch company data for a batch of deal IDs
@@ -275,6 +277,7 @@ export async function getCompanyData(dealIds: string[]): Promise<Map<string, Com
           lastDataUploadDate: parseDate(p[HS_PROPS.LAST_DATA_UPLOAD_DATE]),
           onboardingCompletionDate: parseDate(p[HS_PROPS.ONBOARDING_COMPLETION_DATE]),
           domain: p['domain'] ?? null,
+          lastEducatorActivity: parseDate(p[HS_PROPS.COMPANY_LAST_EDUCATOR_ACTIVITY]),
         })
       }
     } catch {
@@ -352,7 +355,7 @@ export async function getCompanyContacts(companyIds: string[]): Promise<Map<stri
 import type { ArrDealInput, ArrLineItemInput } from './arr'
 
 const ARR_DEAL_PROPERTIES = [
-  'dealname', 'amount', 'closedate', 'dealstage', 'pipeline', 'contract_start_date', 'contract_end_date',
+  'dealname', 'amount', 'closedate', 'dealstage', 'pipeline', 'contract_start_date', 'contract_end_date', 'hubspot_owner_id',
 ]
 const ARR_LINE_ITEM_PROPERTIES = ['name', 'hs_sku', 'hs_product_id', 'amount']
 
@@ -413,6 +416,7 @@ export async function getDealsForCompanies(companyIds: string[]): Promise<Map<st
           pipelineId: p['pipeline'] ?? null,
           contractStart: parseDate(p['contract_start_date']),
           contractEnd: parseDate(p['contract_end_date']),
+          ownerId: p['hubspot_owner_id'] ?? null,
         })
       }
     } catch (err) {
@@ -492,6 +496,53 @@ export async function getCompanyIdsByContactEmail(emails: string[]): Promise<Map
   for (const [email, contactId] of contactIdByEmail) {
     const companies = companyByContact.get(contactId)
     if (companies && companies.length > 0) result.set(email, companies[0])
+  }
+  return result
+}
+
+// ─── All customer companies (lifecycle stage = customer), regardless of pipeline ───
+
+function parseCompany(id: string, p: Record<string, string | null | undefined>): CompanyData {
+  const parseFloat_ = (v: unknown) => (v ? parseFloat(String(v)) : null)
+  const parseDate = (v: unknown) => (v ? new Date(String(v)) : null)
+  return {
+    companyId: id,
+    companyName: p['name'] ?? null,
+    lifecycleStage: p['lifecyclestage'] ?? null,
+    overgradId: p[HS_PROPS.OVERGRAD_ID] ?? null,
+    wauEducators: parseFloat_(p[HS_PROPS.WAU_EDUCATORS]),
+    studentsCompletedSetupPct: parseFloat_(p[HS_PROPS.STUDENTS_COMPLETED_SETUP_PCT]),
+    careerMilestoneCompletionPct: parseFloat_(p[HS_PROPS.CAREER_MILESTONE_PCT]),
+    collegeMilestoneCompletionPct: parseFloat_(p[HS_PROPS.COLLEGE_MILESTONE_PCT]),
+    commonAppLinking: parseFloat_(p[HS_PROPS.COMMON_APP_LINKING]),
+    lastDataUploadDate: parseDate(p[HS_PROPS.LAST_DATA_UPLOAD_DATE]),
+    onboardingCompletionDate: parseDate(p[HS_PROPS.ONBOARDING_COMPLETION_DATE]),
+    domain: p['domain'] ?? null,
+    lastEducatorActivity: parseDate(p[HS_PROPS.COMPANY_LAST_EDUCATOR_ACTIVITY]),
+  }
+}
+
+// Every company at lifecycle stage "customer". New logos live only in the sales pipeline until a
+// renewal deal exists, so the account list must be seeded from companies, not renewal deals.
+export async function getAllCustomerCompanies(): Promise<Map<string, CompanyData>> {
+  const result = new Map<string, CompanyData>()
+  let after: string | undefined
+  for (let page = 0; page < 50; page++) {
+    try {
+      const response = await hubspotClient.crm.companies.searchApi.doSearch({
+        filterGroups: [{ filters: [{ propertyName: 'lifecyclestage', operator: 'EQ' as never, value: 'customer' }] }],
+        properties: COMPANY_PROPERTIES,
+        limit: 100,
+        after,
+        sorts: [],
+      })
+      for (const c of response.results) result.set(String(c.id), parseCompany(String(c.id), c.properties ?? {}))
+      after = response.paging?.next?.after
+      if (!after) break
+    } catch (err) {
+      console.error(`[hubspot] customer company search failed (page ${page}): ${err instanceof Error ? err.message : String(err)}`)
+      break
+    }
   }
   return result
 }
