@@ -11,6 +11,7 @@ import {
   buildInactivityAlert,
 } from './slack'
 import { THRESHOLDS, ALERT_COOLDOWN_HOURS } from './config'
+import type { CompanyArr } from './arr'
 
 const CS_TEAM_CHANNEL = process.env.SLACK_CS_TEAM_CHANNEL ?? '#cs-team'
 
@@ -94,10 +95,12 @@ async function checkRenewalAlerts(account: Account) {
 }
 
 async function checkMissingDataAlerts(account: Account) {
+  const latestDeal = (account.arrBreakdown as CompanyArr | null)?.deals?.[0]
   const missing = [
     !account.renewalDate && 'close date',
     !account.hasLineItems && 'line items',
     !account.primaryContact && 'contact',
+    latestDeal && !latestDeal.contractEnd && 'contract end date',
   ].filter(Boolean) as string[]
 
   if (missing.length === 0) return

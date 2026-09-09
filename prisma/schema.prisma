@@ -30,7 +30,8 @@ model Account {
   unpaidInvoiceDueDate DateTime? @map("unpaid_invoice_due_date")
   onboardingDate DateTime? @map("onboarding_date")
   isOnboarding   Boolean   @default(false) @map("is_onboarding")
-  championStatus              String?   @map("champion_status")
+  championStatus              String?   @map("champion_status")  // 'stable' | 'gone_dark' from primary contact's last_overgrad_activity
+  lastEducatorActivity        DateTime? @map("last_educator_activity")
   // Scoring inputs sourced from HubSpot company properties (Admin Console data)
   studentsCompletedSetupPct   Float?    @map("students_completed_setup_pct")
   careerMilestoneCompletionPct Float?   @map("career_milestone_completion_pct")

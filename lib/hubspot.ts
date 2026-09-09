@@ -17,7 +17,6 @@ export const DEAL_PROPERTIES = [
   HS_PROPS.AMOUNT,
   HS_PROPS.OWNER_ID,
   HS_PROPS.LINE_ITEM_IDS,
-  HS_PROPS.ONBOARDING_DATE,
   HS_PROPS.TOTAL_LICENSED_SEATS,
   'pipeline',
 ]
@@ -204,6 +203,7 @@ export interface CompanyData {
   collegeMilestoneCompletionPct: number | null
   commonAppLinking: number | null
   lastDataUploadDate: Date | null
+  onboardingCompletionDate: Date | null
 }
 
 const COMPANY_PROPERTIES = [
@@ -216,6 +216,7 @@ const COMPANY_PROPERTIES = [
   HS_PROPS.COLLEGE_MILESTONE_PCT,
   HS_PROPS.COMMON_APP_LINKING,
   HS_PROPS.LAST_DATA_UPLOAD_DATE,
+  HS_PROPS.ONBOARDING_COMPLETION_DATE,
 ]
 
 // Fetch company data for a batch of deal IDs
@@ -270,6 +271,7 @@ export async function getCompanyData(dealIds: string[]): Promise<Map<string, Com
           collegeMilestoneCompletionPct: parseFloat_(p[HS_PROPS.COLLEGE_MILESTONE_PCT]),
           commonAppLinking: parseFloat_(p[HS_PROPS.COMMON_APP_LINKING]),
           lastDataUploadDate: parseDate(p[HS_PROPS.LAST_DATA_UPLOAD_DATE]),
+          onboardingCompletionDate: parseDate(p[HS_PROPS.ONBOARDING_COMPLETION_DATE]),
         })
       }
     } catch {
@@ -287,20 +289,59 @@ export async function getCompanyData(dealIds: string[]): Promise<Map<string, Com
 }
 
 // Fetch primary contact email from contact ID (obtained from deal associations)
-export async function getContact(contactId: string) {
+export interface ContactInfo {
+  id: string
+  name: string
+  email: string | null
+  title: string | null
+  lastOvergradActivity: Date | null
+}
+
+const CONTACT_PROPERTIES = ['email', 'firstname', 'lastname', HS_PROPS.CONTACT_JOB_TITLE, HS_PROPS.CONTACT_LAST_ACTIVITY]
+
+function toContactInfo(id: string, p: Record<string, string | null | undefined>): ContactInfo {
+  return {
+    id,
+    name: `${p['firstname'] ?? ''} ${p['lastname'] ?? ''}`.trim(),
+    email: p['email'] ?? null,
+    title: p[HS_PROPS.CONTACT_JOB_TITLE] ?? null,
+    lastOvergradActivity: p[HS_PROPS.CONTACT_LAST_ACTIVITY] ? new Date(String(p[HS_PROPS.CONTACT_LAST_ACTIVITY])) : null,
+  }
+}
+
+export async function getContact(contactId: string): Promise<ContactInfo | null> {
   try {
-    const contact = await hubspotClient.crm.contacts.basicApi.getById(contactId, [
-      'email',
-      'firstname',
-      'lastname',
-    ])
-    return {
-      name: `${contact.properties.firstname ?? ''} ${contact.properties.lastname ?? ''}`.trim(),
-      email: contact.properties.email ?? null,
-    }
+    const contact = await hubspotClient.crm.contacts.basicApi.getById(contactId, CONTACT_PROPERTIES)
+    return toContactInfo(String(contact.id), contact.properties)
   } catch {
     return null
   }
+}
+
+// All contacts associated to each company, with title and last product activity.
+export async function getCompanyContacts(companyIds: string[]): Promise<Map<string, ContactInfo[]>> {
+  const contactIdsByCompany = await batchAssociationIds('companies', 'contacts', companyIds)
+  const allIds = [...new Set([...contactIdsByCompany.values()].flat())]
+  const byId = new Map<string, ContactInfo>()
+  const chunkSize = 100
+  for (let i = 0; i < allIds.length; i += chunkSize) {
+    const chunk = allIds.slice(i, i + chunkSize)
+    try {
+      const response = await hubspotClient.crm.contacts.batchApi.read({
+        inputs: chunk.map((id) => ({ id })),
+        properties: CONTACT_PROPERTIES,
+        propertiesWithHistory: [],
+      })
+      for (const c of response.results) byId.set(String(c.id), toContactInfo(String(c.id), c.properties ?? {}))
+    } catch (err) {
+      console.error(`[hubspot] contacts batch read failed (${chunk.length} ids): ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+  const result = new Map<string, ContactInfo[]>()
+  for (const [companyId, ids] of contactIdsByCompany) {
+    result.set(companyId, ids.map((id) => byId.get(id)).filter((c): c is ContactInfo => !!c))
+  }
+  return result
 }
 
 // ─── ARR inputs (all deals per company + their line items) ───────────────────

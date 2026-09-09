@@ -8,7 +8,6 @@ export const HS_PROPS = {
   AMOUNT: 'amount',
   OWNER_ID: 'hubspot_owner_id',
   LINE_ITEM_IDS: 'hs_line_item_ids',
-  ONBOARDING_DATE: 'onboarding_date',
   OVERGRAD_ID: 'overgrad_id',
 
   // Deal-level properties
@@ -18,6 +17,13 @@ export const HS_PROPS = {
   INVOICE_STATUS: 'hs_invoice_status',           // draft | open | paid | voided
   INVOICE_DUE_DATE: 'hs_due_date',
   INVOICE_BALANCE_DUE: 'hs_balance_due',
+
+  // Company-level properties
+  ONBOARDING_COMPLETION_DATE: 'onboarding_completion_date',
+
+  // Contact-level properties (product writes last_overgrad_activity daily for educators)
+  CONTACT_LAST_ACTIVITY: 'last_overgrad_activity',
+  CONTACT_JOB_TITLE: 'jobtitle',
 
   // Company-level properties (Admin Console data synced into HubSpot)
   WAU_EDUCATORS: 'wau',
