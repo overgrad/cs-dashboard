@@ -3,7 +3,7 @@
 import { useState } from 'react'
 
 const USAGE_DIMS = [
-  'WAU educators (% of licensed seats)',
+  'WAU educators (share of assigned counselors active in last 7 days)',
   '% students completed setup',
   'Career milestone completion',
   'College milestone completion',

@@ -92,6 +92,7 @@ export function ArrBreakdown({
                               {li.countsTowardArr ? 'ARR' : li.product ? 'non-ARR' : 'unmatched'}
                             </span>
                             <span>{li.name}</span>
+                            {li.quantity && li.quantity > 1 ? <span className="text-slate-400">× {li.quantity.toLocaleString('en-US')}</span> : null}
                             <span className="text-slate-400">{money(li.amount)}</span>
                           </li>
                         ))}

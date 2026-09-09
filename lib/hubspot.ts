@@ -17,7 +17,6 @@ export const DEAL_PROPERTIES = [
   HS_PROPS.AMOUNT,
   HS_PROPS.OWNER_ID,
   HS_PROPS.LINE_ITEM_IDS,
-  HS_PROPS.TOTAL_LICENSED_SEATS,
   'pipeline',
 ]
 
@@ -206,6 +205,7 @@ export interface CompanyData {
   onboardingCompletionDate: Date | null
   domain: string | null
   lastEducatorActivity: Date | null  // written daily by the product for schools with active access
+  rosteredStudents: number | null    // active HS students (grades 9–12) per the product's daily roster counts
 }
 
 const COMPANY_PROPERTIES = [
@@ -221,6 +221,7 @@ const COMPANY_PROPERTIES = [
   HS_PROPS.LAST_DATA_UPLOAD_DATE,
   HS_PROPS.ONBOARDING_COMPLETION_DATE,
   HS_PROPS.COMPANY_LAST_EDUCATOR_ACTIVITY,
+  ...HS_PROPS.ROSTER_GRADE_COUNTS,
 ]
 
 // Fetch company data for a batch of deal IDs
@@ -261,24 +262,7 @@ export async function getCompanyData(dealIds: string[]): Promise<Map<string, Com
         propertiesWithHistory: [],
       })
       for (const company of response.results) {
-        const p = company.properties ?? {}
-        const parseFloat_ = (v: unknown) => (v ? parseFloat(String(v)) : null)
-        const parseDate = (v: unknown) => (v ? new Date(String(v)) : null)
-        companyDataMap.set(String(company.id), {
-          companyId: String(company.id),
-          companyName: p['name'] ?? null,
-          lifecycleStage: p['lifecyclestage'] ?? null,
-          overgradId: p[HS_PROPS.OVERGRAD_ID] ?? null,
-          wauEducators: parseFloat_(p[HS_PROPS.WAU_EDUCATORS]),
-          studentsCompletedSetupPct: parseFloat_(p[HS_PROPS.STUDENTS_COMPLETED_SETUP_PCT]),
-          careerMilestoneCompletionPct: parseFloat_(p[HS_PROPS.CAREER_MILESTONE_PCT]),
-          collegeMilestoneCompletionPct: parseFloat_(p[HS_PROPS.COLLEGE_MILESTONE_PCT]),
-          commonAppLinking: parseFloat_(p[HS_PROPS.COMMON_APP_LINKING]),
-          lastDataUploadDate: parseDate(p[HS_PROPS.LAST_DATA_UPLOAD_DATE]),
-          onboardingCompletionDate: parseDate(p[HS_PROPS.ONBOARDING_COMPLETION_DATE]),
-          domain: p['domain'] ?? null,
-          lastEducatorActivity: parseDate(p[HS_PROPS.COMPANY_LAST_EDUCATOR_ACTIVITY]),
-        })
+        companyDataMap.set(String(company.id), parseCompany(String(company.id), company.properties ?? {}))
       }
     } catch {
       // skip chunk on error
@@ -357,7 +341,7 @@ import type { ArrDealInput, ArrLineItemInput } from './arr'
 const ARR_DEAL_PROPERTIES = [
   'dealname', 'amount', 'closedate', 'dealstage', 'pipeline', 'contract_start_date', 'contract_end_date', 'hubspot_owner_id',
 ]
-const ARR_LINE_ITEM_PROPERTIES = ['name', 'hs_sku', 'hs_product_id', 'amount']
+const ARR_LINE_ITEM_PROPERTIES = ['name', 'hs_sku', 'hs_product_id', 'amount', 'quantity']
 
 // Stage ID → label across all deal pipelines (used for the "closed won" label rule)
 export async function getAllStageLabels(): Promise<Map<string, string>> {
@@ -452,6 +436,7 @@ export async function getLineItemsForDeals(dealIds: string[]): Promise<Map<strin
           sku: p['hs_sku'] ?? null,
           productId: p['hs_product_id'] ?? null,
           amount: p['amount'] ? parseFloat(p['amount']) : null,
+          quantity: p['quantity'] ? parseFloat(p['quantity']) : null,
         })
       }
     } catch (err) {
@@ -519,7 +504,14 @@ function parseCompany(id: string, p: Record<string, string | null | undefined>):
     onboardingCompletionDate: parseDate(p[HS_PROPS.ONBOARDING_COMPLETION_DATE]),
     domain: p['domain'] ?? null,
     lastEducatorActivity: parseDate(p[HS_PROPS.COMPANY_LAST_EDUCATOR_ACTIVITY]),
+    rosteredStudents: rosterCount(p),
   }
+}
+
+function rosterCount(p: Record<string, string | null | undefined>): number | null {
+  const counts = HS_PROPS.ROSTER_GRADE_COUNTS.map((k) => p[k]).filter((v): v is string => !!v)
+  if (counts.length === 0) return null
+  return counts.reduce((sum, v) => sum + (parseInt(v, 10) || 0), 0)
 }
 
 // Every company at lifecycle stage "customer". New logos live only in the sales pipeline until a
