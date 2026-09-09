@@ -204,10 +204,12 @@ export interface CompanyData {
   commonAppLinking: number | null
   lastDataUploadDate: Date | null
   onboardingCompletionDate: Date | null
+  domain: string | null
 }
 
 const COMPANY_PROPERTIES = [
   'name',
+  'domain',
   'lifecyclestage',
   HS_PROPS.OVERGRAD_ID,
   HS_PROPS.WAU_EDUCATORS,
@@ -272,6 +274,7 @@ export async function getCompanyData(dealIds: string[]): Promise<Map<string, Com
           commonAppLinking: parseFloat_(p[HS_PROPS.COMMON_APP_LINKING]),
           lastDataUploadDate: parseDate(p[HS_PROPS.LAST_DATA_UPLOAD_DATE]),
           onboardingCompletionDate: parseDate(p[HS_PROPS.ONBOARDING_COMPLETION_DATE]),
+          domain: p['domain'] ?? null,
         })
       }
     } catch {
@@ -454,6 +457,41 @@ export async function getLineItemsForDeals(dealIds: string[]): Promise<Map<strin
   const result = new Map<string, ArrLineItemInput[]>()
   for (const [dealId, itemIds] of itemIdsByDeal) {
     result.set(dealId, itemIds.map((id) => itemsById.get(id)).filter((x): x is ArrLineItemInput => !!x))
+  }
+  return result
+}
+
+// ─── Contact lookup by email (Freshdesk requester → HubSpot contact → company) ───
+
+// Map lowercased email → first associated HubSpot company ID, for contacts that exist.
+export async function getCompanyIdsByContactEmail(emails: string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(emails.map((e) => e.toLowerCase().trim()).filter(Boolean))]
+  const contactIdByEmail = new Map<string, string>()
+  const chunkSize = 100
+  for (let i = 0; i < unique.length; i += chunkSize) {
+    const chunk = unique.slice(i, i + chunkSize)
+    try {
+      const response = await hubspotClient.crm.contacts.batchApi.read({
+        idProperty: 'email',
+        inputs: chunk.map((id) => ({ id })),
+        properties: ['email'],
+        propertiesWithHistory: [],
+      })
+      for (const c of response.results) {
+        const email = (c.properties?.['email'] ?? '').toLowerCase()
+        if (email) contactIdByEmail.set(email, String(c.id))
+      }
+    } catch (err) {
+      // HubSpot 404s the whole batch only when no id matches; anything else is worth seeing
+      const message = err instanceof Error ? err.message : String(err)
+      if (!/404/.test(message)) console.error(`[hubspot] contacts by email failed (${chunk.length}): ${message}`)
+    }
+  }
+  const companyByContact = await batchAssociationIds('contacts', 'companies', [...new Set(contactIdByEmail.values())])
+  const result = new Map<string, string>()
+  for (const [email, contactId] of contactIdByEmail) {
+    const companies = companyByContact.get(contactId)
+    if (companies && companies.length > 0) result.set(email, companies[0])
   }
   return result
 }

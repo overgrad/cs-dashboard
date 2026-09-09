@@ -35,6 +35,7 @@ const EMPTY_COMPANY: Omit<CompanyData, 'companyId'> = {
   commonAppLinking: null,
   lastDataUploadDate: null,
   onboardingCompletionDate: null,
+  domain: null,
 }
 
 // Pick the best champion among a company's contacts: a counselor/director/principal-type
@@ -164,6 +165,7 @@ export async function POST(request: Request) {
           hubspotId: primary.id,
           overgradId: companyData.overgradId,
           name: companyData.companyName ?? p[HS_PROPS.DEAL_NAME] ?? 'Unnamed',
+          domain: companyData.domain,
           owner: owner?.name ?? null,
           ownerEmail: owner?.email ?? null,
           renewalDate: p[HS_PROPS.CLOSE_DATE] ? new Date(p[HS_PROPS.CLOSE_DATE]!) : null,

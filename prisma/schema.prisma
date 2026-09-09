@@ -13,6 +13,7 @@ model Account {
   hubspotId      String?   @map("hubspot_id")           // Primary deal ID
   overgradId     String?   @map("overgrad_id")
   name           String
+  domain         String?   // HubSpot company domain — used to match Freshdesk requesters
   owner          String?
   ownerEmail     String?   @map("owner_email")
   renewalDate    DateTime? @map("renewal_date")
