@@ -37,6 +37,7 @@ const EMPTY_COMPANY: Omit<CompanyData, 'companyId'> = {
   onboardingCompletionDate: null,
   domain: null,
   lastEducatorActivity: null,
+  rosteredStudents: null,
 }
 
 const NO_RENEWAL_DEAL_STAGE = 'No renewal deal yet'
@@ -170,8 +171,6 @@ export async function POST(request: Request) {
           ? now < new Date(onboardingDate.getTime() + 8 * 7 * 24 * 60 * 60 * 1000)
           : false
 
-        const seatsRaw = p[HS_PROPS.TOTAL_LICENSED_SEATS]
-
         const companyUnpaid = deals
           .map((d) => unpaidInvoicesMap.get(d.id))
           .filter((u): u is NonNullable<typeof u> => !!u)
@@ -221,7 +220,9 @@ export async function POST(request: Request) {
           isOnboarding,
           championStatus,
           lastEducatorActivity,
-          totalLicensedSeats: seatsRaw ? parseInt(seatsRaw) : null,
+          licensedStudents: arrInfo?.licensedStudents ?? null,
+          licensedMiddleSchool: arrInfo?.licensedMiddleSchool ?? null,
+          rosteredStudents: companyData.rosteredStudents,
           wauEducators: companyData.wauEducators,
           studentsCompletedSetupPct: companyData.studentsCompletedSetupPct,
           careerMilestoneCompletionPct: companyData.careerMilestoneCompletionPct,

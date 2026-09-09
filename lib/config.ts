@@ -10,9 +10,6 @@ export const HS_PROPS = {
   LINE_ITEM_IDS: 'hs_line_item_ids',
   OVERGRAD_ID: 'overgrad_id',
 
-  // Deal-level properties
-  TOTAL_LICENSED_SEATS: 'total_licensed_seats',
-
   // Invoice properties (HubSpot Commerce Invoices object — native, not custom)
   INVOICE_STATUS: 'hs_invoice_status',           // draft | open | paid | voided
   INVOICE_DUE_DATE: 'hs_due_date',
@@ -21,6 +18,7 @@ export const HS_PROPS = {
   // Company-level properties
   ONBOARDING_COMPLETION_DATE: 'onboarding_completion_date',
   COMPANY_LAST_EDUCATOR_ACTIVITY: 'last_educator_activity',
+  ROSTER_GRADE_COUNTS: ['grade_9_count', 'grade_10_count', 'grade_11_count', 'grade_12_count'], // active HS students by grade, written daily by the product
 
   // Contact-level properties (product writes last_overgrad_activity daily for educators)
   CONTACT_LAST_ACTIVITY: 'last_overgrad_activity',

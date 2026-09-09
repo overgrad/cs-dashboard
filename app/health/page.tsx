@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import { prisma } from '@/lib/prisma'
 import { computeUsageScore, computeInteractionsScore } from '@/lib/scoring'
 import { daysAgo } from '@/lib/dates'
+import { seatUsage } from '@/app/components/SeatUsage'
 import { OwnerFilter } from '@/app/components/OwnerFilter'
 import { ScoreInfo } from '@/app/components/ScoreInfo'
 import { Sparkline } from '@/app/components/Sparkline'
@@ -260,6 +261,7 @@ export default async function HealthPage({
                 </th>
                 <th className="px-4 py-2 text-center">8-wk</th>
                 <th className="px-4 py-2 text-left">Renewal</th>
+                <th className="px-4 py-2 text-right" title="Students with accounts as a share of licensed students">Seats used</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -312,6 +314,18 @@ export default async function HealthPage({
                       ) : (
                         formatRenewal(account.renewalDate, days)
                       )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {(() => {
+                        const { withAccounts, pctOfLicensed } = seatUsage(account)
+                        if (pctOfLicensed === null) return <span className="text-xs text-slate-400">—</span>
+                        const cls = pctOfLicensed >= 70 ? 'text-emerald-700' : pctOfLicensed >= 40 ? 'text-yellow-700' : 'text-red-700'
+                        return (
+                          <span className={`text-sm font-medium ${cls}`} title={`${withAccounts?.toLocaleString('en-US')} of ${account.licensedStudents?.toLocaleString('en-US')} licensed students have accounts`}>
+                            {pctOfLicensed}%
+                          </span>
+                        )
+                      })()}
                     </td>
                   </tr>
                 )

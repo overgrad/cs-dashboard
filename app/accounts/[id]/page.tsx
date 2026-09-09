@@ -8,6 +8,7 @@ import { Sparkline } from '@/app/components/Sparkline'
 import { TabGroup } from '@/app/components/TabGroup'
 import type { DimScore } from '@/lib/scoring'
 import { ArrBreakdown } from '@/app/components/ArrBreakdown'
+import { SeatUsage } from '@/app/components/SeatUsage'
 import type { CompanyArr } from '@/lib/arr'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -170,6 +171,7 @@ export default async function AccountPage({
   // ── Usage tab ──
   const usageTab = (
     <div className="px-1 py-2">
+      <SeatUsage account={account} />
       {usage.components.map((d) => (
         <DimRow key={d.label} label={d.label} value={d.value} score={d.score} />
       ))}

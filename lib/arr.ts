@@ -41,11 +41,13 @@ export interface ArrLineItemInput {
   sku: string | null
   productId: string | null
   amount: number | null
+  quantity: number | null
 }
 
 export interface ArrLineItem {
   name: string
   amount: number
+  quantity: number | null
   countsTowardArr: boolean
   product: string | null // matched catalog item name, null if unmatched
 }
@@ -63,6 +65,8 @@ export interface ArrDeal {
   dealAmount: number
   hasLineItems: boolean
   lineItems: ArrLineItem[]
+  licensedStudents: number | null      // HS student seats on this deal (see LICENSED_STUDENTS_HS_PRODUCTS)
+  licensedMiddleSchool: number | null  // middle-school seats, a separate population
 }
 
 export interface CompanyArr {
@@ -74,7 +78,21 @@ export interface CompanyArr {
   latestContractDealName: string | null
   deals: ArrDeal[]
   unmatchedProducts: string[]
+  licensedStudents: number | null      // sum over active deals
+  licensedMiddleSchool: number | null
 }
+
+// Per-student license products. Access / Success / Complete / Success Data-Only cover the SAME
+// high-school students on a deal (e.g. Access + Success both at qty 7,595), so within a deal we
+// take the largest product quantity rather than summing. Middle School is a separate population
+// and is added on top. Site licenses, NSC reports and CBO deals are not per-student and are ignored.
+export const LICENSED_STUDENTS_HS_PRODUCTS = new Set([
+  'Student Licenses:Access',
+  'Student Licenses:Success',
+  'Student Licenses:Complete',
+  'Student Licenses:Success Data-Only Add On',
+])
+export const LICENSED_STUDENTS_MS_PRODUCTS = new Set(['Student Licenses:Overgrad for Middle School'])
 
 // Same matching strategy as Finance: exact match on the part after "Category:", then
 // substring, then SKU (exact, then partial), then product ID.
@@ -148,6 +166,8 @@ export function computeCompanyArr(
     const items = lineItemsByDeal.get(d.id) ?? []
     let arrAmount = 0
     let nonArrAmount = 0
+    const hsSeatsByProduct = new Map<string, number>()
+    let msSeats = 0
     const lineItems: ArrLineItem[] = items.map((it) => {
       const cls = classifyLineItem(it)
       const amount = it.amount ?? 0
@@ -155,8 +175,16 @@ export function computeCompanyArr(
       if (!cls) unmatched.add(it.name ?? `line item ${it.id}`)
       if (counts) arrAmount += amount
       else nonArrAmount += amount
-      return { name: it.name ?? 'Unnamed', amount, countsTowardArr: counts, product: cls?.itemName ?? null }
+      if (cls && it.quantity) {
+        if (LICENSED_STUDENTS_HS_PRODUCTS.has(cls.itemName)) {
+          hsSeatsByProduct.set(cls.itemName, (hsSeatsByProduct.get(cls.itemName) ?? 0) + it.quantity)
+        } else if (LICENSED_STUDENTS_MS_PRODUCTS.has(cls.itemName)) {
+          msSeats += it.quantity
+        }
+      }
+      return { name: it.name ?? 'Unnamed', amount, quantity: it.quantity, countsTowardArr: counts, product: cls?.itemName ?? null }
     })
+    const hsSeats = hsSeatsByProduct.size > 0 ? Math.max(...hsSeatsByProduct.values()) : null
     const start = d.contractStart ?? d.closeDate
     const active =
       !!d.contractEnd && dateOnly(d.contractEnd) >= today && !!start && dateOnly(start) <= today
@@ -173,6 +201,8 @@ export function computeCompanyArr(
       dealAmount: d.amount ?? 0,
       hasLineItems: items.length > 0,
       lineItems,
+      licensedStudents: hsSeats !== null ? Math.round(hsSeats) : null,
+      licensedMiddleSchool: msSeats > 0 ? Math.round(msSeats) : null,
     })
   }
 
@@ -180,7 +210,12 @@ export function computeCompanyArr(
   const sortKey = (d: ArrDeal) => d.contractEnd ?? d.closeDate ?? ''
   result.sort((a, b) => sortKey(b).localeCompare(sortKey(a)))
 
-  const currentArr = result.filter((d) => d.active).reduce((s, d) => s + d.arrAmount, 0)
+  const activeDeals = result.filter((d) => d.active)
+  const currentArr = activeDeals.reduce((s, d) => s + d.arrAmount, 0)
+  const sumOrNull = (vals: (number | null)[]) => {
+    const present = vals.filter((v): v is number => v !== null)
+    return present.length > 0 ? present.reduce((a, b) => a + b, 0) : null
+  }
   const latest = result[0] ?? null
 
   return {
@@ -192,5 +227,7 @@ export function computeCompanyArr(
     latestContractDealName: latest?.dealName ?? null,
     deals: result,
     unmatchedProducts: [...unmatched],
+    licensedStudents: sumOrNull(activeDeals.map((d) => d.licensedStudents)),
+    licensedMiddleSchool: sumOrNull(activeDeals.map((d) => d.licensedMiddleSchool)),
   }
 }
