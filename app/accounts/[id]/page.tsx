@@ -9,6 +9,7 @@ import { TabGroup } from '@/app/components/TabGroup'
 import type { DimScore } from '@/lib/scoring'
 import { ArrBreakdown } from '@/app/components/ArrBreakdown'
 import { SeatUsage } from '@/app/components/SeatUsage'
+import { activityFlags } from '@/lib/flags'
 import type { CompanyArr } from '@/lib/arr'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -166,6 +167,7 @@ export default async function AccountPage({
 
   const days = daysUntil(account.renewalDate)
   const isAtRisk = combined !== null && combined < 50
+  const flags = activityFlags(account, new Date())
   const renewalSoon = days !== null && days > 0 && days <= 60
 
   // ── Usage tab ──
@@ -309,6 +311,26 @@ export default async function AccountPage({
               {account.isOnboarding && (
                 <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
                   Onboarding
+                </span>
+              )}
+              {account.status === 'lapsed' && (
+                <span className="rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-semibold text-orange-700">
+                  Contract lapsed
+                </span>
+              )}
+              {flags.noCsActivityDays !== null && (
+                <span className="rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-700">
+                  No CS activity {flags.noCsActivityDays}d
+                </span>
+              )}
+              {flags.noProductUsageDays !== null && (
+                <span className="rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-700">
+                  No product usage {flags.noProductUsageDays}d
+                </span>
+              )}
+              {flags.championDark && (
+                <span className="rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-semibold text-purple-700">
+                  Champion gone dark
                 </span>
               )}
               {account.dealStage && (

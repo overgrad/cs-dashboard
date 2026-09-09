@@ -54,6 +54,7 @@ export default async function HealthPage({
     prisma.account.findMany({
       where: {
         isOnboarding: false,
+        status: { not: 'churned' },
         ...(ownerFilter ? { owner: ownerFilter } : {}),
         ...(q ? { name: { contains: q, mode: 'insensitive' as const } } : {}),
       },

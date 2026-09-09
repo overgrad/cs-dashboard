@@ -20,7 +20,7 @@ export async function POST(request: Request) {
   const twelveMonthsOut = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000)
 
   const accounts = await prisma.account.findMany({
-    where: { isOnboarding: false },
+    where: { isOnboarding: false, status: { not: 'churned' } },
   })
 
   // Determine primary deal per company for health alerts.
