@@ -1,6 +1,7 @@
 export const dynamic = 'force-dynamic'
 
 import { prisma } from '@/lib/prisma'
+import { daysAgo, requestNow } from '@/lib/dates'
 import { computeUsageScore, computeInteractionsScore } from '@/lib/scoring'
 import { SectionHeader } from '@/app/components/SectionHeader'
 import { OwnerFilter } from '@/app/components/OwnerFilter'
@@ -172,9 +173,9 @@ export default async function QueuePage({
 }) {
   const { owner: ownerFilter, filter: activeFilter, q } = await searchParams
 
-  const sixWeeksAgo = new Date(Date.now() - 6 * 7 * 24 * 60 * 60 * 1000)
-  const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000)
-  const now = new Date()
+  const sixWeeksAgo = daysAgo(6 * 7)
+  const sixtyDaysAgo = daysAgo(60)
+  const now = requestNow()
 
   const [accounts, allOwners] = await Promise.all([
     prisma.account.findMany({

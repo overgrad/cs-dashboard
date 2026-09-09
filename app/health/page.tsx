@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { prisma } from '@/lib/prisma'
 import { computeUsageScore, computeInteractionsScore } from '@/lib/scoring'
-import { SectionHeader } from '@/app/components/SectionHeader'
+import { daysAgo } from '@/lib/dates'
 import { OwnerFilter } from '@/app/components/OwnerFilter'
 import { ScoreInfo } from '@/app/components/ScoreInfo'
 import { Sparkline } from '@/app/components/Sparkline'
@@ -47,7 +47,7 @@ export default async function HealthPage({
 }) {
   const { owner: ownerFilter, q } = await searchParams
 
-  const eightWeeksAgo = new Date(Date.now() - 8 * 7 * 24 * 60 * 60 * 1000)
+  const eightWeeksAgo = daysAgo(8 * 7)
 
   const [accounts, allOwners] = await Promise.all([
     prisma.account.findMany({
@@ -75,8 +75,8 @@ export default async function HealthPage({
       .then((rows) => rows.map((r) => r.owner!)),
   ])
 
-  const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000)
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+  const sixtyDaysAgo = daysAgo(60)
+  const thirtyDaysAgo = daysAgo(30)
 
   const scored = accounts.map((account) => {
     const usage = computeUsageScore(account)
