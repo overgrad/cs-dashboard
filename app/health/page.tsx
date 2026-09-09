@@ -275,11 +275,15 @@ export default async function HealthPage({
                     <td className="px-4 py-3">
                       <a href={`/accounts/${account.id}`} className="hover:text-indigo-600">
                         <span className="block font-medium text-slate-900">{account.name}</span>
-                        {account.arr !== null && (
+                        {account.arr ? (
                           <span className="block text-xs text-slate-400">
                             ${Math.round(account.arr / 1000)}k ARR
                           </span>
-                        )}
+                        ) : account.latestContractArr ? (
+                          <span className="block text-xs text-slate-400">
+                            no active contract · last ${Math.round(account.latestContractArr / 1000)}k
+                          </span>
+                        ) : null}
                       </a>
                     </td>
                     <td className="px-4 py-3">

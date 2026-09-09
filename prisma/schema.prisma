@@ -17,7 +17,11 @@ model Account {
   ownerEmail     String?   @map("owner_email")
   renewalDate    DateTime? @map("renewal_date")
   dealStage      String?   @map("deal_stage")
-  arr            Float?
+  arr            Float?    // Current ARR — Finance definition, see lib/arr.ts
+  latestContractArr  Float?    @map("latest_contract_arr")
+  latestContractEnd  DateTime? @map("latest_contract_end")
+  arrBreakdown       Json?     @map("arr_breakdown")
+  arrAsOf            DateTime? @map("arr_as_of")
   primaryContact String?   @map("primary_contact")
   contactEmail   String?   @map("contact_email")
   hasLineItems   Boolean   @default(false) @map("has_line_items")

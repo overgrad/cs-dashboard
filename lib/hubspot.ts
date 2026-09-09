@@ -302,3 +302,117 @@ export async function getContact(contactId: string) {
     return null
   }
 }
+
+// ─── ARR inputs (all deals per company + their line items) ───────────────────
+
+import type { ArrDealInput, ArrLineItemInput } from './arr'
+
+const ARR_DEAL_PROPERTIES = [
+  'dealname', 'amount', 'closedate', 'dealstage', 'pipeline', 'contract_start_date', 'contract_end_date',
+]
+const ARR_LINE_ITEM_PROPERTIES = ['name', 'hs_sku', 'hs_product_id', 'amount']
+
+// Stage ID → label across all deal pipelines (used for the "closed won" label rule)
+export async function getAllStageLabels(): Promise<Map<string, string>> {
+  const map = new Map<string, string>()
+  try {
+    const response = await hubspotClient.crm.pipelines.pipelinesApi.getAll('deals')
+    for (const p of response.results) for (const s of p.stages ?? []) map.set(s.id, s.label)
+  } catch (err) {
+    console.error(`[hubspot] pipelines fetch failed: ${err instanceof Error ? err.message : String(err)}`)
+  }
+  return map
+}
+
+async function batchAssociationIds(fromType: string, toType: string, ids: string[]): Promise<Map<string, string[]>> {
+  const map = new Map<string, string[]>()
+  const chunkSize = 100
+  for (let i = 0; i < ids.length; i += chunkSize) {
+    const chunk = ids.slice(i, i + chunkSize)
+    try {
+      const response = await hubspotClient.crm.associations.v4.batchApi.getPage(
+        fromType, toType, { inputs: chunk.map((id) => ({ id })) },
+      )
+      for (const r of response.results) {
+        if (r.to && r.to.length > 0) map.set(r._from.id, r.to.map((t) => String(t.toObjectId)))
+      }
+    } catch (err) {
+      console.error(`[hubspot] ${fromType}→${toType} associations failed (${chunk.length} ids): ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+  return map
+}
+
+// Every deal associated to each company (any pipeline), with the properties ARR needs.
+export async function getDealsForCompanies(companyIds: string[]): Promise<Map<string, ArrDealInput[]>> {
+  const dealIdsByCompany = await batchAssociationIds('companies', 'deals', companyIds)
+  const allDealIds = [...new Set([...dealIdsByCompany.values()].flat())]
+  const dealsById = new Map<string, ArrDealInput>()
+  const chunkSize = 100
+  const parseDate = (v: unknown) => (v ? new Date(String(v)) : null)
+  for (let i = 0; i < allDealIds.length; i += chunkSize) {
+    const chunk = allDealIds.slice(i, i + chunkSize)
+    try {
+      const response = await hubspotClient.crm.deals.batchApi.read({
+        inputs: chunk.map((id) => ({ id })),
+        properties: ARR_DEAL_PROPERTIES,
+        propertiesWithHistory: [],
+      })
+      for (const d of response.results) {
+        const p = d.properties ?? {}
+        dealsById.set(String(d.id), {
+          id: String(d.id),
+          name: p['dealname'] ?? '',
+          amount: p['amount'] ? parseFloat(p['amount']) : null,
+          closeDate: parseDate(p['closedate']),
+          stageId: p['dealstage'] ?? null,
+          pipelineId: p['pipeline'] ?? null,
+          contractStart: parseDate(p['contract_start_date']),
+          contractEnd: parseDate(p['contract_end_date']),
+        })
+      }
+    } catch (err) {
+      console.error(`[hubspot] deals batch read failed (${chunk.length} ids): ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+  const result = new Map<string, ArrDealInput[]>()
+  for (const [companyId, dealIds] of dealIdsByCompany) {
+    result.set(companyId, dealIds.map((id) => dealsById.get(id)).filter((d): d is ArrDealInput => !!d))
+  }
+  return result
+}
+
+// Line items for a set of deals
+export async function getLineItemsForDeals(dealIds: string[]): Promise<Map<string, ArrLineItemInput[]>> {
+  const itemIdsByDeal = await batchAssociationIds('deals', 'line_items', dealIds)
+  const allItemIds = [...new Set([...itemIdsByDeal.values()].flat())]
+  const itemsById = new Map<string, ArrLineItemInput>()
+  const chunkSize = 100
+  for (let i = 0; i < allItemIds.length; i += chunkSize) {
+    const chunk = allItemIds.slice(i, i + chunkSize)
+    try {
+      const response = await hubspotClient.crm.lineItems.batchApi.read({
+        inputs: chunk.map((id) => ({ id })),
+        properties: ARR_LINE_ITEM_PROPERTIES,
+        propertiesWithHistory: [],
+      })
+      for (const it of response.results) {
+        const p = it.properties ?? {}
+        itemsById.set(String(it.id), {
+          id: String(it.id),
+          name: p['name'] ?? null,
+          sku: p['hs_sku'] ?? null,
+          productId: p['hs_product_id'] ?? null,
+          amount: p['amount'] ? parseFloat(p['amount']) : null,
+        })
+      }
+    } catch (err) {
+      console.error(`[hubspot] line items batch read failed (${chunk.length} ids): ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+  const result = new Map<string, ArrLineItemInput[]>()
+  for (const [dealId, itemIds] of itemIdsByDeal) {
+    result.set(dealId, itemIds.map((id) => itemsById.get(id)).filter((x): x is ArrLineItemInput => !!x))
+  }
+  return result
+}

@@ -7,6 +7,8 @@ import { computeUsageScore, computeInteractionsScore } from '@/lib/scoring'
 import { Sparkline } from '@/app/components/Sparkline'
 import { TabGroup } from '@/app/components/TabGroup'
 import type { DimScore } from '@/lib/scoring'
+import { ArrBreakdown } from '@/app/components/ArrBreakdown'
+import type { CompanyArr } from '@/lib/arr'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -281,7 +283,11 @@ export default async function AccountPage({
             <p className="mt-0.5 text-sm text-slate-500">
               {[
                 account.owner && `Owner: ${account.owner}`,
-                account.arr && formatARR(account.arr) + ' ARR',
+                account.arr
+                  ? formatARR(account.arr) + ' ARR'
+                  : account.latestContractArr
+                    ? `No active contract (last ${formatARR(account.latestContractArr)}${account.latestContractEnd ? `, ended ${shortDate(account.latestContractEnd)}` : ''})`
+                    : null,
                 account.renewalDate && `Renewal ${shortDate(account.renewalDate)}`,
                 account.primaryContact && `Champion: ${account.primaryContact}`,
               ]
@@ -338,6 +344,16 @@ export default async function AccountPage({
             { label: 'Interactions', content: interactionsTab },
             { label: 'Notes', content: notesTab },
             { label: 'Activity', content: activityTab },
+            {
+              label: 'ARR',
+              content: (
+                <ArrBreakdown
+                  breakdown={(account.arrBreakdown as unknown as CompanyArr | null) ?? null}
+                  currentArr={account.arr}
+                  asOf={account.arrAsOf}
+                />
+              ),
+            },
           ]}
         />
       </div>

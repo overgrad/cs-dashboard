@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getAllDeals, getOwner, getContact, getRenewalsPipelineInfo, getDealsWithLineItems, getCompanyData, getUnpaidInvoices, type CompanyData } from '@/lib/hubspot'
 import { HS_PROPS } from '@/lib/config'
+import { computeArrForCompanies } from '@/lib/arr-hubspot'
 
 type Deal = Awaited<ReturnType<typeof getAllDeals>>[number]
 
@@ -67,6 +68,17 @@ export async function POST(request: Request) {
       companiesMap.get(key)!.deals.push(deal)
     }
 
+    // ARR per company, Finance definition (see lib/arr.ts)
+    const customerCompanyIds = [...companiesMap.entries()]
+      .filter(([, v]) => v.companyData.lifecycleStage === 'customer')
+      .map(([id]) => id)
+    const arrByCompany = await computeArrForCompanies(customerCompanyIds)
+    const unmatchedProducts = new Set<string>()
+    for (const a of arrByCompany.values()) for (const u of a.unmatchedProducts) unmatchedProducts.add(u)
+    if (unmatchedProducts.size > 0) {
+      console.warn(`[sync/hubspot] line items not in Finance product catalog (treated as non-ARR): ${[...unmatchedProducts].join(' | ')}`)
+    }
+
     const ownerCache = new Map<string, { name: string; email: string | undefined } | null>()
     const syncedCompanyIds: string[] = []
     let synced = 0
@@ -112,6 +124,8 @@ export async function POST(request: Request) {
           return oldest
         }, null)
 
+        const arrInfo = arrByCompany.get(companyId) ?? null
+
         const fields = {
           hubspotId: primary.id,
           overgradId: companyData.overgradId,
@@ -120,7 +134,11 @@ export async function POST(request: Request) {
           ownerEmail: owner?.email ?? null,
           renewalDate: p[HS_PROPS.CLOSE_DATE] ? new Date(p[HS_PROPS.CLOSE_DATE]!) : null,
           dealStage: pipelineInfo?.stageMap.get(p[HS_PROPS.DEAL_STAGE] ?? '') ?? p[HS_PROPS.DEAL_STAGE] ?? null,
-          arr: p[HS_PROPS.AMOUNT] ? parseFloat(p[HS_PROPS.AMOUNT]!) : null,
+          arr: arrInfo ? arrInfo.currentArr : null,
+          latestContractArr: arrInfo?.latestContractArr ?? null,
+          latestContractEnd: arrInfo?.latestContractEnd ? new Date(arrInfo.latestContractEnd) : null,
+          arrBreakdown: arrInfo ? JSON.parse(JSON.stringify(arrInfo)) : undefined,
+          arrAsOf: arrInfo ? new Date() : null,
           primaryContact: contact?.name ?? null,
           contactEmail: contact?.email ?? null,
           hasLineItems: deals.some((d) => dealsWithLineItems.has(d.id)),
@@ -182,6 +200,8 @@ export async function POST(request: Request) {
         companiesWithCustomerLifecycle: [...companiesMap.values()].filter(
           (c) => c.companyData.lifecycleStage === 'customer',
         ).length,
+        arrComputed: arrByCompany.size,
+        arrUnmatchedProducts: [...unmatchedProducts],
       },
     })
   } catch (err) {

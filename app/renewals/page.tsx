@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { prisma } from '@/lib/prisma'
 import { StatCard } from '@/app/components/StatCard'
+import { ArrInfo } from '@/app/components/ArrInfo'
 import { SectionHeader } from '@/app/components/SectionHeader'
 import { OwnerFilter } from '@/app/components/OwnerFilter'
 import { SearchInput } from '@/app/components/SearchInput'
@@ -154,11 +155,14 @@ export default async function RenewalsPage({
             variant={unpaidInvoices.length > 0 ? 'warning' : 'default'}
           />
           <StatCard
-            label="Projected ARR"
+            label="Current ARR"
             value={formatARR(projectedARR)}
-            sub="All active deals"
+            sub="Active contracts · Finance definition"
           />
         </div>
+        <p className="mt-2 text-xs text-slate-400">
+          ARR follows Finance&apos;s definition: license line items on closed-won deals whose contract end date is in the future. <ArrInfo />
+        </p>
       </div>
 
       {accounts.length === 0 ? (
@@ -209,7 +213,11 @@ export default async function RenewalsPage({
                           </td>
                           <td className="px-4 py-3 text-slate-600">{a.dealStage ?? '—'}</td>
                           <td className="px-4 py-3 text-right font-medium text-slate-800">
-                            {a.arr ? formatARR(a.arr) : '—'}
+                            {a.arr ? formatARR(a.arr) : a.latestContractArr ? (
+                              <span className="text-slate-400" title="No active contract — last contract value">
+                                {formatARR(a.latestContractArr)} <span className="text-xs">lapsed</span>
+                              </span>
+                            ) : '—'}
                           </td>
                           <td className="px-4 py-3">
                             {a.owner ? (
@@ -418,7 +426,11 @@ export default async function RenewalsPage({
                           </td>
                           <td className="px-4 py-3 text-slate-600">{a.dealStage ?? '—'}</td>
                           <td className="px-4 py-3 text-right font-medium text-slate-800">
-                            {a.arr ? formatARR(a.arr) : '—'}
+                            {a.arr ? formatARR(a.arr) : a.latestContractArr ? (
+                              <span className="text-slate-400" title="No active contract — last contract value">
+                                {formatARR(a.latestContractArr)} <span className="text-xs">lapsed</span>
+                              </span>
+                            ) : '—'}
                           </td>
                           <td className="px-4 py-3">
                             {a.owner ? (
