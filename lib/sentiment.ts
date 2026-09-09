@@ -9,7 +9,8 @@ export interface SentimentResult {
 
 export async function analyzeSentiment(
   accountName: string,
-  notes: string[]
+  notes: string[],
+  kind: 'meeting' | 'ticket' = 'meeting',
 ): Promise<SentimentResult | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey || notes.length === 0) return null
@@ -18,11 +19,12 @@ export async function analyzeSentiment(
     .slice(0, 5) // cap at 5 most recent notes to stay within context
     .join('\n\n---\n\n')
 
-  const prompt = `You are analyzing customer success meeting notes for ${accountName}.
+  const source = kind === 'ticket' ? 'support tickets' : 'meeting notes'
+  const prompt = `You are analyzing customer success ${source} for ${accountName}.
 
-Based on the following meeting notes, determine the overall customer sentiment and write a 1–2 sentence summary of the account health from a CS perspective.
+Based on the following ${source}, determine the overall customer sentiment and write a 1–2 sentence summary of the account health from a CS perspective.
 
-Meeting notes:
+${kind === 'ticket' ? 'Support tickets' : 'Meeting notes'}:
 ${combinedText}
 
 Respond with JSON only, in this exact format:

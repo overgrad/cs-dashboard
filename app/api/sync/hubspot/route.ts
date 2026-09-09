@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getAllDeals, getOwner, getContact, getRenewalsPipelineInfo, getDealsWithLineItems, getCompanyData, getUnpaidInvoices, type CompanyData } from '@/lib/hubspot'
-import { HS_PROPS } from '@/lib/config'
+import { getAllDeals, getOwner, getContact, getCompanyContacts, getRenewalsPipelineInfo, getDealsWithLineItems, getCompanyData, getUnpaidInvoices, type CompanyData, type ContactInfo } from '@/lib/hubspot'
+import { HS_PROPS, THRESHOLDS } from '@/lib/config'
 import { computeArrForCompanies } from '@/lib/arr-hubspot'
 
 type Deal = Awaited<ReturnType<typeof getAllDeals>>[number]
@@ -34,6 +34,25 @@ const EMPTY_COMPANY: Omit<CompanyData, 'companyId'> = {
   collegeMilestoneCompletionPct: null,
   commonAppLinking: null,
   lastDataUploadDate: null,
+  onboardingCompletionDate: null,
+  domain: null,
+}
+
+// Pick the best champion among a company's contacts: a counselor/director/principal-type
+// title first, then whoever was most recently active in the product.
+const CHAMPION_TITLE = /counsel|director|principal|coordinator|dean|superintendent|head/i
+function pickCompanyContact(contacts: ContactInfo[]): ContactInfo | null {
+  if (contacts.length === 0) return null
+  const ts = (c: ContactInfo) => c.lastOvergradActivity?.getTime() ?? 0
+  const titled = contacts.filter((c) => c.title && CHAMPION_TITLE.test(c.title)).sort((a, b) => ts(b) - ts(a))
+  if (titled.length > 0) return titled[0]
+  return [...contacts].sort((a, b) => ts(b) - ts(a))[0]
+}
+
+function championStatusFor(contact: ContactInfo | null, now: Date): string | null {
+  if (!contact?.lastOvergradActivity) return null
+  const days = (now.getTime() - contact.lastOvergradActivity.getTime()) / (1000 * 60 * 60 * 24)
+  return days > THRESHOLDS.CHAMPION_DARK_DAYS ? 'gone_dark' : 'stable'
 }
 
 // POST /api/sync/hubspot — pulls all deals, groups by company, upserts one row per company
@@ -72,7 +91,10 @@ export async function POST(request: Request) {
     const customerCompanyIds = [...companiesMap.entries()]
       .filter(([, v]) => v.companyData.lifecycleStage === 'customer')
       .map(([id]) => id)
-    const arrByCompany = await computeArrForCompanies(customerCompanyIds)
+    const [arrByCompany, contactsByCompany] = await Promise.all([
+      computeArrForCompanies(customerCompanyIds),
+      getCompanyContacts(customerCompanyIds),
+    ])
     const unmatchedProducts = new Set<string>()
     for (const a of arrByCompany.values()) for (const u of a.unmatchedProducts) unmatchedProducts.add(u)
     if (unmatchedProducts.size > 0) {
@@ -102,13 +124,26 @@ export async function POST(request: Request) {
         }
         const owner = ownerCache.get(ownerId) ?? null
 
+        // Primary contact: the deal's contact, else the best contact on the company
+        const companyContacts = contactsByCompany.get(companyId) ?? []
         const contactId = primary.associations?.contacts?.results?.[0]?.id
-        const contact = contactId ? await getContact(contactId) : null
+        const dealContact = contactId ? await getContact(contactId) : null
+        const contact = dealContact ?? pickCompanyContact(companyContacts)
 
-        const onboardingDateRaw = p[HS_PROPS.ONBOARDING_DATE]
-        const onboardingDate = onboardingDateRaw ? new Date(onboardingDateRaw) : null
+        // Educator activity comes from the product writing last_overgrad_activity onto contacts
+        const now = new Date()
+        const activityDates = [...companyContacts, ...(dealContact ? [dealContact] : [])]
+          .map((c) => c.lastOvergradActivity)
+          .filter((d): d is Date => !!d)
+        const lastEducatorActivity = activityDates.length > 0
+          ? new Date(Math.max(...activityDates.map((d) => d.getTime())))
+          : null
+        const championStatus = championStatusFor(contact, now)
+
+        // Onboarding: 8-week grace window after the company's onboarding completion date
+        const onboardingDate = companyData.onboardingCompletionDate
         const isOnboarding = onboardingDate
-          ? new Date() < new Date(onboardingDate.getTime() + 8 * 7 * 24 * 60 * 60 * 1000)
+          ? now < new Date(onboardingDate.getTime() + 8 * 7 * 24 * 60 * 60 * 1000)
           : false
 
         const seatsRaw = p[HS_PROPS.TOTAL_LICENSED_SEATS]
@@ -130,6 +165,7 @@ export async function POST(request: Request) {
           hubspotId: primary.id,
           overgradId: companyData.overgradId,
           name: companyData.companyName ?? p[HS_PROPS.DEAL_NAME] ?? 'Unnamed',
+          domain: companyData.domain,
           owner: owner?.name ?? null,
           ownerEmail: owner?.email ?? null,
           renewalDate: p[HS_PROPS.CLOSE_DATE] ? new Date(p[HS_PROPS.CLOSE_DATE]!) : null,
@@ -147,6 +183,8 @@ export async function POST(request: Request) {
           unpaidInvoiceDueDate,
           onboardingDate,
           isOnboarding,
+          championStatus,
+          lastEducatorActivity,
           totalLicensedSeats: seatsRaw ? parseInt(seatsRaw) : null,
           wauEducators: companyData.wauEducators,
           studentsCompletedSetupPct: companyData.studentsCompletedSetupPct,

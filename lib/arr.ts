@@ -9,12 +9,15 @@
 //   2. Classify each line item against Finance's product catalog. Licenses count
 //      toward ARR; services, training, implementation and fees do not. A deal with
 //      no line items contributes $0 ARR (Finance treats the bare deal amount as non-ARR).
-//   3. A deal is active while its Contract End Date is today or later. Deals with no
-//      Contract End Date are never active.
+//   3. A deal is active when its contract window covers today: Contract Start Date
+//      (falling back to the close date when missing) is on or before today AND Contract
+//      End Date is today or later. Deals with no Contract End Date are never active.
+//      (Rule agreed with Finance 2026-09-09 — the previous end-date-only rule pulled in
+//      future-year multi-year components, e.g. NYCPS R1657 Years 2–5.)
 //   4. Current ARR = sum of ARR line items across active deals. No proration.
 import { PRODUCT_CLASSIFICATION, type ProductClassification } from './product-classification'
 
-export const ARR_METHOD_VERSION = '2026-09-09'
+export const ARR_METHOD_VERSION = '2026-09-09b'
 
 // Stage IDs Finance treats as closed-won, plus any stage whose label contains "closed" and "won".
 export const CLOSED_WON_STAGE_IDS = new Set(['closedwon', '110452794', '110452793', '110583424'])
@@ -152,7 +155,9 @@ export function computeCompanyArr(
       else nonArrAmount += amount
       return { name: it.name ?? 'Unnamed', amount, countsTowardArr: counts, product: cls?.itemName ?? null }
     })
-    const active = !!d.contractEnd && dateOnly(d.contractEnd) >= today
+    const start = d.contractStart ?? d.closeDate
+    const active =
+      !!d.contractEnd && dateOnly(d.contractEnd) >= today && !!start && dateOnly(start) <= today
     result.push({
       dealId: d.id,
       dealName: d.name,

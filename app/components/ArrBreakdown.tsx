@@ -45,7 +45,7 @@ export function ArrBreakdown({
                 {fmtDate(latest.contractStart)} → {fmtDate(latest.contractEnd)} · {money(latest.arrAmount)} ARR
                 {latest.nonArrAmount > 0 ? ` + ${money(latest.nonArrAmount)} non-ARR` : ''}
                 {' · '}
-                <span className={latest.active ? 'text-emerald-600' : 'text-red-600'}>{latest.active ? 'Active' : 'Ended'}</span>
+                <span className={latest.active ? 'text-emerald-600' : 'text-red-600'}>{latest.active ? 'Active' : latest.contractStart && new Date(latest.contractStart) > new Date() ? 'Future' : 'Ended'}</span>
               </p>
             </>
           ) : (
@@ -104,7 +104,7 @@ export function ArrBreakdown({
                   <td className="px-4 py-2 text-right align-top">{d.nonArrAmount ? money(d.nonArrAmount) : '—'}</td>
                   <td className="px-4 py-2 align-top">
                     <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${d.active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
-                      {d.active ? 'Active' : 'Ended'}
+                      {d.active ? 'Active' : d.contractStart && new Date(d.contractStart) > new Date() ? 'Future' : 'Ended'}
                     </span>
                   </td>
                 </tr>
@@ -118,9 +118,11 @@ export function ArrBreakdown({
         <p className="mb-1 font-semibold text-slate-700">How ARR is calculated (matches Finance)</p>
         <p>
           Closed-won deals on this company, any pipeline, with an amount above $0. Each line item is classified against Finance&apos;s
-          product catalog: licenses count toward ARR; training, implementation, services and fees do not. A deal counts while its
-          Contract End Date in HubSpot is today or later. Deals with no line items or no Contract End Date count as $0, so fixing
-          those in HubSpot is the way to correct an account&apos;s ARR here and in Finance&apos;s reporting.
+          product catalog: licenses count toward ARR; training, implementation, services and fees do not. A deal counts while today
+          falls inside its contract window in HubSpot, from Contract Start Date (or close date if missing) through Contract End
+          Date, so future-year components of multi-year agreements are not counted until they start. Deals with no line items or
+          no Contract End Date count as $0, so fixing those in HubSpot is the way to correct an account&apos;s ARR here and in
+          Finance&apos;s reporting.
         </p>
       </div>
     </div>

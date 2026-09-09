@@ -21,7 +21,7 @@ export function ArrInfo() {
           <ul className="space-y-1 text-xs text-slate-500">
             <li>· Closed-won deals only, any pipeline, amount &gt; $0</li>
             <li>· Only license line items count. Training, implementation, services and fees are excluded</li>
-            <li>· A deal counts while its Contract End Date is today or later</li>
+            <li>· A deal counts while today falls inside its contract window (Contract Start Date, or close date if missing, through Contract End Date)</li>
             <li>· Deals with no line items or no Contract End Date count as $0</li>
           </ul>
           <p className="mt-2 text-xs text-slate-400">Same method as Finance&apos;s ARR reporting.</p>

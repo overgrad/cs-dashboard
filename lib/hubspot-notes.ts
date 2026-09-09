@@ -180,3 +180,72 @@ export async function getNotesForDeals(
   }
   return result
 }
+
+// ─── Other CS activity: notes, calls, completed tasks ─────────────────────────
+
+const ENGAGEMENT_TYPES = [
+  { type: 'notes', properties: ['hs_timestamp'] },
+  { type: 'calls', properties: ['hs_timestamp', 'hs_call_status'] },
+  { type: 'tasks', properties: ['hs_timestamp', 'hs_task_status'] },
+] as const
+
+async function getEngagementTimestamps(type: string, properties: readonly string[], ids: string[]): Promise<Map<string, Date>> {
+  const map = new Map<string, Date>()
+  for (let i = 0; i < ids.length; i += chunkSize) {
+    const chunk = ids.slice(i, i + chunkSize)
+    try {
+      const response = await hubspotClient.crm.objects.batchApi.read(type, {
+        inputs: chunk.map((id) => ({ id })),
+        properties: [...properties],
+        propertiesWithHistory: [],
+      })
+      for (const obj of response.results) {
+        const p = obj.properties ?? {}
+        // Only completed tasks and completed calls count as activity that happened
+        if (type === 'tasks' && p['hs_task_status'] !== 'COMPLETED') continue
+        if (type === 'calls' && p['hs_call_status'] && p['hs_call_status'] !== 'COMPLETED') continue
+        const ts = p['hs_timestamp'] ? new Date(p['hs_timestamp']) : new Date(obj.createdAt)
+        map.set(obj.id, ts)
+      }
+    } catch (err) {
+      console.error(`[hubspot-notes] ${type} batch failed (${chunk.length} ids): ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
+  return map
+}
+
+// Most recent note / completed call / completed task per company, looking at engagements
+// attached to the company or to any of its deals.
+export async function getLastOtherActivityForCompanies(
+  companyIds: string[],
+  dealIdsByCompany: Map<string, string[]>,
+): Promise<Map<string, Date>> {
+  const result = new Map<string, Date>()
+  if (companyIds.length === 0) return result
+  const allDealIds = [...new Set([...dealIdsByCompany.values()].flat())]
+
+  for (const { type, properties } of ENGAGEMENT_TYPES) {
+    const [byCompany, byDeal] = await Promise.all([
+      batchAssociations('companies', type, companyIds),
+      allDealIds.length > 0 ? batchAssociations('deals', type, allDealIds) : Promise.resolve(new Map<string, string[]>()),
+    ])
+    const idsByCompany = new Map<string, Set<string>>()
+    for (const companyId of companyIds) {
+      const set = new Set<string>(byCompany.get(companyId) ?? [])
+      for (const dealId of dealIdsByCompany.get(companyId) ?? []) for (const id of byDeal.get(dealId) ?? []) set.add(id)
+      if (set.size > 0) idsByCompany.set(companyId, set)
+    }
+    const allIds = [...new Set([...idsByCompany.values()].flatMap((s) => [...s]))]
+    if (allIds.length === 0) continue
+    const timestamps = await getEngagementTimestamps(type, properties, allIds)
+    for (const [companyId, ids] of idsByCompany) {
+      for (const id of ids) {
+        const ts = timestamps.get(id)
+        if (!ts) continue
+        const cur = result.get(companyId)
+        if (!cur || ts > cur) result.set(companyId, ts)
+      }
+    }
+  }
+  return result
+}
