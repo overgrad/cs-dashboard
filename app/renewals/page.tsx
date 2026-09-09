@@ -38,6 +38,7 @@ export default async function RenewalsPage({
   try {
     const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000)
     const where = {
+      status: { not: 'churned' },
       OR: [{ renewalDate: { gte: sixtyDaysAgo } }, { renewalDate: null }],
       ...(ownerFilter ? { owner: ownerFilter } : {}),
       ...(q ? { name: { contains: q, mode: 'insensitive' as const } } : {}),

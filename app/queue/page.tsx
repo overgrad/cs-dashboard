@@ -2,6 +2,8 @@ export const dynamic = 'force-dynamic'
 
 import { prisma } from '@/lib/prisma'
 import { daysAgo, requestNow } from '@/lib/dates'
+import { activityFlags } from '@/lib/flags'
+import { THRESHOLDS } from '@/lib/config'
 import { computeUsageScore, computeInteractionsScore } from '@/lib/scoring'
 import { SectionHeader } from '@/app/components/SectionHeader'
 import { OwnerFilter } from '@/app/components/OwnerFilter'
@@ -95,13 +97,15 @@ interface Enriched {
   isDiverging: boolean
   hasScoreDrop: boolean
   hasNoActivity: boolean
+  noProductUsageDays: number | null
+  championDark: boolean
   hasUpcomingRenewal: boolean
 }
 
 function synthesize(
   e: Enriched,
 ): { title: string; desc: string; priority: Priority; icon: 'drop' | 'diverge' | 'activity' } | null {
-  const { account, combined, days, isAtRisk, isDiverging, hasScoreDrop, hasNoActivity, sparkCombined, sparkUsage, sparkInteractions } = e
+  const { account, combined, days, isAtRisk, isDiverging, hasScoreDrop, hasNoActivity, noProductUsageDays, championDark, sparkCombined, sparkUsage, sparkInteractions } = e
 
   if (hasScoreDrop && days !== null && days > 0 && days <= 30) {
     const vals = sparkCombined.filter((v): v is number => v !== null)
@@ -150,6 +154,24 @@ function synthesize(
     }
   }
 
+  if (noProductUsageDays !== null) {
+    return {
+      title: `${account.name} — no product usage`,
+      desc: `No educator has logged in for ${noProductUsageDays} days`,
+      priority: 'Overdue',
+      icon: 'activity',
+    }
+  }
+
+  if (championDark) {
+    return {
+      title: `${account.name} — champion gone dark`,
+      desc: `${account.primaryContact ?? 'Primary contact'} has not been active in the product for ${THRESHOLDS.CHAMPION_DARK_DAYS}+ days`,
+      priority: 'Watch',
+      icon: 'activity',
+    }
+  }
+
   if (hasScoreDrop) {
     return { title: `${account.name} — score drop`, desc: 'Score dropped this week', priority: 'Watch', icon: 'drop' }
   }
@@ -174,13 +196,13 @@ export default async function QueuePage({
   const { owner: ownerFilter, filter: activeFilter, q } = await searchParams
 
   const sixWeeksAgo = daysAgo(6 * 7)
-  const sixtyDaysAgo = daysAgo(60)
   const now = requestNow()
 
   const [accounts, allOwners] = await Promise.all([
     prisma.account.findMany({
       where: {
         isOnboarding: false,
+        status: { not: 'churned' },
         ...(ownerFilter ? { owner: ownerFilter } : {}),
         ...(q ? { name: { contains: q, mode: 'insensitive' as const } } : {}),
       },
@@ -242,9 +264,12 @@ export default async function QueuePage({
       const vals = sparkCombined.filter((v): v is number => v !== null)
       return vals.length >= 2 && vals[vals.length - 1] < vals[vals.length - 2] - 4
     })()
+    // Same thresholds as the Slack alerts (configurable via NO_ACTIVITY_ALERT_DAYS etc.)
+    const flags = activityFlags(account, now)
+    const activityCutoff = daysAgo(THRESHOLDS.NO_ACTIVITY_ALERT_DAYS)
     const hasNoActivity =
-      (!account.lastCsTouchpoint || account.lastCsTouchpoint < sixtyDaysAgo) &&
-      (!account.lastCustomerContact || account.lastCustomerContact < sixtyDaysAgo)
+      (!account.lastCsTouchpoint || account.lastCsTouchpoint < activityCutoff) &&
+      (!account.lastCustomerContact || account.lastCustomerContact < activityCutoff)
 
     return {
       account,
@@ -257,6 +282,8 @@ export default async function QueuePage({
       isDiverging,
       hasScoreDrop,
       hasNoActivity,
+      noProductUsageDays: flags.noProductUsageDays,
+      championDark: flags.championDark,
       hasUpcomingRenewal,
     }
   })
@@ -303,7 +330,7 @@ export default async function QueuePage({
       : activeFilter === 'atrisk'
         ? 'At risk accounts'
         : activeFilter === 'noactivity'
-          ? 'No activity 60+ days'
+          ? `No activity ${THRESHOLDS.NO_ACTIVITY_ALERT_DAYS}+ days`
           : null
 
   return (

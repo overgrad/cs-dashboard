@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { getAllDeals, getOwner, getContact, getCompanyContacts, getAllCustomerCompanies, getRenewalsPipelineInfo, getDealsWithLineItems, getCompanyData, getUnpaidInvoices, type CompanyData, type ContactInfo } from '@/lib/hubspot'
 import { HS_PROPS, THRESHOLDS } from '@/lib/config'
 import { computeArrForCompanies } from '@/lib/arr-hubspot'
+import { accountStatus } from '@/lib/flags'
 
 type Deal = Awaited<ReturnType<typeof getAllDeals>>[number]
 
@@ -121,6 +122,7 @@ export async function POST(request: Request) {
     let synced = 0
     let skipped = 0
     let errors = 0
+    let churnedCount = 0
     const errorSamples: { company: string; error: string }[] = []
 
     for (const [companyId, { companyData, deals }] of companiesMap) {
@@ -194,8 +196,12 @@ export async function POST(request: Request) {
           }
         }
 
+        const latestContractEnd = arrInfo?.latestContractEnd ? new Date(arrInfo.latestContractEnd) : null
+        const status = accountStatus({ arr: arrInfo?.currentArr ?? null, latestContractEnd, renewalDate }, now)
+
         const fields = {
           hubspotId: primary?.id ?? latestClosedWon!.dealId,
+          status,
           overgradId: companyData.overgradId,
           name: companyData.companyName ?? p[HS_PROPS.DEAL_NAME] ?? latestClosedWon?.dealName ?? 'Unnamed',
           domain: companyData.domain,
@@ -207,7 +213,7 @@ export async function POST(request: Request) {
             : NO_RENEWAL_DEAL_STAGE,
           arr: arrInfo ? arrInfo.currentArr : null,
           latestContractArr: arrInfo?.latestContractArr ?? null,
-          latestContractEnd: arrInfo?.latestContractEnd ? new Date(arrInfo.latestContractEnd) : null,
+          latestContractEnd,
           arrBreakdown: arrInfo ? JSON.parse(JSON.stringify(arrInfo)) : undefined,
           arrAsOf: arrInfo ? new Date() : null,
           primaryContact: contact?.name ?? null,
@@ -239,6 +245,7 @@ export async function POST(request: Request) {
         }
         syncedCompanyIds.push(companyId)
         synced++
+        if (status === 'churned') churnedCount++
       } catch (err) {
         errors++
         const message = err instanceof Error ? err.message : String(err)
@@ -276,6 +283,7 @@ export async function POST(request: Request) {
           (c) => c.companyData.lifecycleStage === 'customer',
         ).length,
         arrComputed: arrByCompany.size,
+        churned: churnedCount,
         customersWithoutRenewalDeal,
         arrUnmatchedProducts: [...unmatchedProducts],
       },
