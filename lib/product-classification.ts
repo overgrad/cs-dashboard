@@ -1,8 +1,9 @@
 // Product catalog used to classify HubSpot line items as ARR vs non-ARR.
 //
 // SOURCE OF TRUTH: cashflow-qbo/data/product_classification_v2.csv (Finance).
-// Generated 2026-09-09 — regenerate when Finance updates the catalog so the
-// dashboard's ARR keeps matching Finance's numbers. Do not hand-edit.
+// Generated 2026-09-09 by scripts/generate-product-catalog.py — rerun it when
+// Finance updates the catalog so the dashboard's ARR keeps matching Finance's numbers.
+// Do not hand-edit.
 
 export interface ProductClassification {
   productId: string

@@ -11,7 +11,7 @@ export async function GET(request: Request) {
     filterGroups: [{
       filters: [{
         propertyName: 'dealname',
-        operator: 'CONTAINS_TOKEN' as any,
+        operator: 'CONTAINS_TOKEN' as never,
         value: dealName,
       }]
     }],
@@ -32,7 +32,7 @@ export async function GET(request: Request) {
       filterGroups: [{
         filters: [{
           propertyName: 'associations.deal',
-          operator: 'EQ' as any,
+          operator: 'EQ' as never,
           value: deal.id,
         }]
       }],

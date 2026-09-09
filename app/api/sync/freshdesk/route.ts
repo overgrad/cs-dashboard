@@ -74,12 +74,18 @@ export async function POST(request: Request) {
       }
       const domain = requesterDomain(t)
       if (!accountId && domain) {
-        const candidates = accountsByDomain.get(domain) ?? []
-        if (candidates.length === 1) {
-          accountId = candidates[0]
-          matched.domain++
-        } else if (candidates.length > 1) {
-          ambiguousDomain++
+        // Exact domain first, then parent domains (online.houstonisd.org → houstonisd.org)
+        const parts = domain.split('.')
+        for (let i = 0; i < parts.length - 1 && !accountId; i++) {
+          const candidate = parts.slice(i).join('.')
+          const candidates = accountsByDomain.get(candidate) ?? []
+          if (candidates.length === 1) {
+            accountId = candidates[0]
+            matched.domain++
+          } else if (candidates.length > 1) {
+            ambiguousDomain++
+            break
+          }
         }
       }
       if (!accountId) {
