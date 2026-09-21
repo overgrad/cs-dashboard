@@ -98,32 +98,6 @@ export function buildMissingDataAlert(opts: {
   return { text, blocks }
 }
 
-export function buildScoreDropAlert(opts: {
-  accountId: string
-  accountName: string
-  ownerName: string | null
-  ownerEmail: string | null
-  scoreType: 'usage' | 'interactions'
-  previousScore: number
-  currentScore: number
-}) {
-  const { accountId, accountName, ownerName, ownerEmail, scoreType, previousScore, currentScore } =
-    opts
-  const drop = previousScore - currentScore
-  const label = scoreType === 'usage' ? 'Usage' : 'Interactions'
-  const text = `${label} score dropped ${drop} pts for ${accountName}: ${previousScore} → ${currentScore}`
-  const blocks: KnownBlock[] = [
-    {
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: `📉 *${label} score drop (${drop} pts)*\n*Account:* ${accountLink(accountId, accountName)}\n*Score:* ${previousScore} → ${currentScore}\n*Owner:* ${ownerMention(ownerEmail, ownerName)}`,
-      },
-    },
-  ]
-  return { text, blocks }
-}
-
 export function buildDivergenceAlert(opts: {
   accountId: string
   accountName: string

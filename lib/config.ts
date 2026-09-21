@@ -37,10 +37,14 @@ export const THRESHOLDS = {
   RECENCY_GREEN_MONTHS: 2,    // was 1 — quarterly CS cadence is normal for healthy accounts
   RECENCY_YELLOW_MONTHS: 9,   // was 6 — 9 months without contact = genuinely at risk
   SCORE_DROP_ALERT_PTS: 10,
-  NO_ACTIVITY_ALERT_DAYS: 60,
   NO_USAGE_ALERT_DAYS: 30,
   CHAMPION_DARK_DAYS: 30,
 } as const
 
 // Alert deduplication window — won't resend the same alert within this many hours
 export const ALERT_COOLDOWN_HOURS = 7 * 24
+
+// Slack
+export const CS_TEAM_CHANNEL = process.env.SLACK_CS_TEAM_CHANNEL ?? '#cs-team'
+// og-success user group — resolved from past mentions in #customer_success
+export const OG_SUCCESS_GROUP_ID = 'S02ANQF9N9W'
