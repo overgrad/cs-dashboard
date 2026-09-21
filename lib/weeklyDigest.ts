@@ -1,5 +1,5 @@
 import { sendToChannel } from './slack'
-import { CS_TEAM_CHANNEL, OG_SUCCESS_GROUP_ID } from './config'
+import { CUSTOMER_SUCCESS_CHANNEL, OG_SUCCESS_GROUP_ID } from './config'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
 
@@ -18,5 +18,5 @@ export async function sendWeeklyDigest() {
       },
     },
   ]
-  return sendToChannel(CS_TEAM_CHANNEL, text, blocks)
+  return sendToChannel(CUSTOMER_SUCCESS_CHANNEL, text, blocks)
 }
