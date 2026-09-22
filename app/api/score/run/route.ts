@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { computeUsageScore, computeInteractionsScore } from '@/lib/scoring'
 import { runRenewalAlerts, runHealthAlerts } from '@/lib/alerts'
+import { scoreWeekStart } from '@/lib/dates'
 
 // POST /api/score/run — compute scores for all active accounts and store in score_history.
 // Called by the daily cron or manually. Protected by SYNC_SECRET.
@@ -15,7 +16,7 @@ export async function POST(request: Request) {
   const silentParam = new URL(request.url).searchParams.get('silent')
   const silent = silentParam === '1' || silentParam === 'true'
 
-  const weekStart = getWeekStart()
+  const weekStart = scoreWeekStart()
   const now = new Date()
   const twelveMonthsOut = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000)
 
@@ -90,11 +91,4 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ scored, errors, total: accounts.length, week: weekStart, silentAlerts: silent })
-}
-
-function getWeekStart(): Date {
-  const d = new Date()
-  d.setUTCHours(0, 0, 0, 0)
-  d.setUTCDate(d.getUTCDate() - d.getUTCDay()) // Sunday
-  return d
 }

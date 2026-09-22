@@ -10,3 +10,19 @@ export function requestNow(): Date {
 export function daysAgo(days: number): Date {
   return new Date(Date.now() - days * 24 * 60 * 60 * 1000)
 }
+
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000
+
+// Sunday 00:00 UTC of the week containing `date` — the key score/run stores ScoreHistory under.
+export function scoreWeekStart(date: Date = new Date()): Date {
+  const d = new Date(date)
+  d.setUTCHours(0, 0, 0, 0)
+  d.setUTCDate(d.getUTCDate() - d.getUTCDay())
+  return d
+}
+
+// The last `n` score weeks, oldest first, ending with the current week.
+export function recentScoreWeeks(n: number): Date[] {
+  const current = scoreWeekStart().getTime()
+  return Array.from({ length: n }, (_, i) => new Date(current - (n - 1 - i) * WEEK_MS))
+}
