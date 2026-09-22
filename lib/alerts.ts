@@ -2,18 +2,14 @@ import type { Account } from '@/app/generated/prisma/client'
 import { prisma } from './prisma'
 import {
   alertContext,
-  sendToChannel,
   sendDm,
   buildRenewalAlert,
   buildMissingDataAlert,
-  buildScoreDropAlert,
   buildDivergenceAlert,
   buildInactivityAlert,
 } from './slack'
 import { THRESHOLDS, ALERT_COOLDOWN_HOURS, ALERTS_DISABLED } from './config'
 import type { CompanyArr } from './arr'
-
-const CS_TEAM_CHANNEL = process.env.SLACK_CS_TEAM_CHANNEL ?? '#cs-team'
 
 // ─── Deduplication ────────────────────────────────────────────────────────────
 
@@ -50,28 +46,13 @@ async function checkRenewalAlerts(account: Account) {
   const daysUntil = Math.ceil(
     (account.renewalDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
   )
-  // Only alert for renewals in the next 12 months; ignore old deals
-  if (daysUntil < 0 || daysUntil > 365) return
-  if (daysUntil > 90) return
+  // DM the owner while the renewal is 31–90 days out, copying the CS manager inside 60 days.
+  // The alert cooldown repeats that weekly within each tier. Renewals inside 30 days don't
+  // get an individual alert — they're on the queue, and the weekly #customer_success
+  // reminder points CS there.
+  if (daysUntil <= 30 || daysUntil > 90) return
 
-  let triggerType: string
-  let channel: string
-  let sendToManager = false
-
-  if (daysUntil <= 30) {
-    triggerType = 'renewal_30'
-    channel = CS_TEAM_CHANNEL
-    sendToManager = true
-  } else if (daysUntil <= 60) {
-    triggerType = 'renewal_60'
-    channel = 'dm'
-    sendToManager = true
-  } else {
-    triggerType = 'renewal_90'
-    channel = 'dm'
-    sendToManager = false
-  }
-
+  const triggerType = daysUntil <= 60 ? 'renewal_60' : 'renewal_90'
   if (await hasRecentAlert(account.id, triggerType)) return
 
   const { text, blocks } = buildRenewalAlert({
@@ -83,14 +64,10 @@ async function checkRenewalAlerts(account: Account) {
     arr: account.arr,
   })
 
-  let ts: string | null = null
-  if (channel === 'dm' && account.ownerEmail) {
-    ts = await sendDm(account.ownerEmail, text, blocks)
-    if (sendToManager && process.env.SLACK_CS_MANAGER_EMAIL) {
-      await sendDm(process.env.SLACK_CS_MANAGER_EMAIL, text, blocks)
-    }
-  } else {
-    ts = await sendToChannel(channel, text, blocks)
+  // Unowned accounts still reach the manager inside 60 days.
+  const ts = account.ownerEmail ? await sendDm(account.ownerEmail, text, blocks) : null
+  if (triggerType === 'renewal_60' && process.env.SLACK_CS_MANAGER_EMAIL) {
+    await sendDm(process.env.SLACK_CS_MANAGER_EMAIL, text, blocks)
   }
 
   await recordAlert(account.id, triggerType, ts)
@@ -124,59 +101,6 @@ async function checkMissingDataAlerts(account: Account) {
     ts = await sendDm(account.ownerEmail, text, blocks)
   }
   await recordAlert(account.id, triggerType, ts)
-}
-
-async function checkScoreDropAlerts(
-  account: Account,
-  previousScores: { usageScore: number | null; interactionsScore: number | null } | null,
-  currentUsage: number | null,
-  currentInteractions: number | null
-) {
-  if (!previousScores) return
-
-  const drop = THRESHOLDS.SCORE_DROP_ALERT_PTS
-
-  if (
-    previousScores.usageScore !== null &&
-    currentUsage !== null &&
-    previousScores.usageScore - currentUsage >= drop
-  ) {
-    const triggerType = 'usage_score_drop'
-    if (!isDisabled(triggerType) && !(await hasRecentAlert(account.id, triggerType))) {
-      const { text, blocks } = buildScoreDropAlert({
-        accountId: account.id,
-        accountName: account.name,
-        ownerName: account.owner,
-        ownerEmail: account.ownerEmail,
-        scoreType: 'usage',
-        previousScore: previousScores.usageScore,
-        currentScore: currentUsage,
-      })
-      const ts = await sendToChannel(CS_TEAM_CHANNEL, text, blocks)
-      await recordAlert(account.id, triggerType, ts)
-    }
-  }
-
-  if (
-    previousScores.interactionsScore !== null &&
-    currentInteractions !== null &&
-    previousScores.interactionsScore - currentInteractions >= drop
-  ) {
-    const triggerType = 'interactions_score_drop'
-    if (!isDisabled(triggerType) && !(await hasRecentAlert(account.id, triggerType))) {
-      const { text, blocks } = buildScoreDropAlert({
-        accountId: account.id,
-        accountName: account.name,
-        ownerName: account.owner,
-        ownerEmail: account.ownerEmail,
-        scoreType: 'interactions',
-        previousScore: previousScores.interactionsScore,
-        currentScore: currentInteractions,
-      })
-      const ts = await sendToChannel(CS_TEAM_CHANNEL, text, blocks)
-      await recordAlert(account.id, triggerType, ts)
-    }
-  }
 }
 
 async function checkDivergenceAlert(
@@ -219,27 +143,9 @@ async function checkDivergenceAlert(
 async function checkInactivityAlerts(account: Account) {
   const now = Date.now()
 
-  // No CS activity (meeting, outgoing email, note, call, completed task) in N days
-  if (!isDisabled('no_cs_activity') && account.lastCsTouchpoint) {
-    const daysSince = Math.floor(
-      (now - account.lastCsTouchpoint.getTime()) / (1000 * 60 * 60 * 24)
-    )
-    if (daysSince >= THRESHOLDS.NO_ACTIVITY_ALERT_DAYS) {
-      const triggerType = 'no_cs_activity_60d' // trigger name kept stable for the cooldown; threshold is configurable
-      if (!(await hasRecentAlert(account.id, triggerType))) {
-        const { text, blocks } = buildInactivityAlert({
-          accountId: account.id,
-          accountName: account.name,
-          ownerName: account.owner,
-          ownerEmail: account.ownerEmail,
-          daysSinceActivity: daysSince,
-          kind: 'cs_activity',
-        })
-        const ts = await sendToChannel(CS_TEAM_CHANNEL, text, blocks)
-        await recordAlert(account.id, triggerType, ts)
-      }
-    }
-  }
+  // No CS activity isn't alerted per account. The account page shows it past
+  // THRESHOLDS.NO_ACTIVITY_ALERT_DAYS; the queue lists the account once there's been no CS
+  // touchpoint and no customer contact for that long.
 
   // No product usage: no educator at the account has been active in the product for N days.
   // (Previously keyed off the SIS roster upload date, which is a yearly event, not usage.)
@@ -313,7 +219,6 @@ export async function runHealthAlerts(
 ) {
   await alertContext.run({ silent: !!opts.silent }, () =>
     Promise.allSettled([
-      checkScoreDropAlerts(account, previousScores, currentUsage, currentInteractions),
       checkDivergenceAlert(account, previousScores, currentUsage, currentInteractions),
       checkInactivityAlerts(account),
     ]),

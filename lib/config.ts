@@ -49,18 +49,26 @@ export const THRESHOLDS = {
   RECENCY_GREEN_MONTHS: 2,    // was 1 — quarterly CS cadence is normal for healthy accounts
   RECENCY_YELLOW_MONTHS: 9,   // was 6 — 9 months without contact = genuinely at risk
   SCORE_DROP_ALERT_PTS: 10,
-  NO_ACTIVITY_ALERT_DAYS: envInt('NO_ACTIVITY_ALERT_DAYS', 90),  // no CS touchpoint (meeting, email, note, call, task)
+  NO_ACTIVITY_ALERT_DAYS: envInt('NO_ACTIVITY_ALERT_DAYS', 90),  // no CS touchpoint (meeting, email, note, call, task) — flagged in the queue
   NO_USAGE_ALERT_DAYS: envInt('NO_USAGE_ALERT_DAYS', 30),        // no educator activity in the product
   CHAMPION_DARK_DAYS: envInt('CHAMPION_DARK_DAYS', 60),          // primary contact inactive in the product
 }
 
 // Alert types that should not fire at all. Comma-separated config var, e.g.
 // ALERTS_DISABLED=no_product_usage,champion_gone_dark
-// Names: renewal, missing_data, usage_score_drop, interactions_score_drop, score_divergence,
-//        no_cs_activity, no_product_usage, champion_gone_dark
+// Names: renewal, missing_data, score_divergence, no_product_usage, champion_gone_dark
 export const ALERTS_DISABLED = new Set(
   (process.env.ALERTS_DISABLED ?? '').split(',').map((s) => s.trim()).filter(Boolean),
 )
 
 // Alert deduplication window — won't resend the same alert within this many hours
 export const ALERT_COOLDOWN_HOURS = 7 * 24
+
+// Public base URL, used for links in Slack messages
+export const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+
+// Slack
+export const CS_TEAM_CHANNEL = process.env.SLACK_CS_TEAM_CHANNEL || '#cs-team'
+export const CUSTOMER_SUCCESS_CHANNEL = process.env.SLACK_CUSTOMER_SUCCESS_CHANNEL || 'C015PDY6E4V'
+// og-success user group — resolved from past mentions in #customer_success
+export const OG_SUCCESS_GROUP_ID = process.env.SLACK_OG_SUCCESS_GROUP_ID || 'S02ANQF9N9W'

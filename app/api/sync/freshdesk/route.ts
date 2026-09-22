@@ -20,7 +20,7 @@ import { analyzeSentiment } from '@/lib/sentiment'
 //   3. requester email domain → account, only when exactly one account has that domain
 export async function POST(request: Request) {
   const authHeader = request.headers.get('authorization')
-  if (authHeader !== `Bearer ${process.env.SYNC_SECRET}`) {
+  if (!process.env.SYNC_SECRET || authHeader !== `Bearer ${process.env.SYNC_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

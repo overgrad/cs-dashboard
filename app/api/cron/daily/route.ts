@@ -4,6 +4,8 @@ import { POST as syncFreshdesk } from '@/app/api/sync/freshdesk/route'
 import { POST as syncNotes } from '@/app/api/sync/notes/route'
 import { POST as runScores } from '@/app/api/score/run/route'
 import { sendToChannel } from '@/lib/slack'
+import { sendWeeklyReminderIfDue } from '@/lib/weeklyReminder'
+import { CS_TEAM_CHANNEL } from '@/lib/config'
 
 type Handler = (request: Request) => Promise<Response>
 
@@ -38,23 +40,40 @@ async function notifyUnmatchedProducts(syncBody: string | null, silent: boolean)
     const parsed = JSON.parse(syncBody) as { debug?: { arrUnmatchedProducts?: string[] } }
     const unmatched = parsed.debug?.arrUnmatchedProducts ?? []
     if (unmatched.length === 0 || silent) return
-    const channel = process.env.SLACK_CS_TEAM_CHANNEL ?? '#cs-team'
     await sendToChannel(
-      channel,
+      CS_TEAM_CHANNEL,
       `⚠️ ${unmatched.length} HubSpot line item name(s) are not in Finance's product catalog and are being counted as non-ARR: ${unmatched.join(', ')}. ` +
         `Ask Finance to classify them in cashflow-qbo, then run scripts/generate-product-catalog.py in cs-dashboard.`,
     )
-  } catch {
+  } catch (err) {
     // never let a notification failure affect the run
+    const message = err instanceof Error ? err.message : String(err)
+    console.error(`[cron] unmatched-products notice failed: ${message}`)
+  }
+}
+
+// Heroku Scheduler has no weekly frequency, so the weekly reminder rides along with the
+// daily run. It doesn't depend on synced data, so it goes first — a sync failure or a
+// restart mid-run can't swallow it.
+async function sendWeeklyReminder(silent: boolean) {
+  if (silent) {
+    console.log('[cron] weekly reminder skipped (silent)')
+    return
+  }
+  try {
+    console.log(`[cron] weekly reminder: ${await sendWeeklyReminderIfDue()}`)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error(`[cron] weekly reminder failed: ${message}`)
   }
 }
 
 // GET /api/cron/daily — triggered daily by Heroku Scheduler.
-// Responds immediately, then runs HubSpot sync → Freshdesk + notes sync → scoring
-// in the background. Results are written to the server logs.
+// Responds immediately, then (after the weekly reminder, when due) runs HubSpot sync →
+// Freshdesk + notes sync → scoring in the background. Results are written to the server logs.
 export async function GET(request: Request) {
   const authHeader = request.headers.get('authorization')
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (!process.env.CRON_SECRET || authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -64,6 +83,7 @@ export async function GET(request: Request) {
 
   after(async () => {
     console.log(`[cron] daily run started${silent ? ' (silent alerts)' : ''}`)
+    await sendWeeklyReminder(silent)
     const hubspotBody = await runStep('sync/hubspot', syncHubspot)
     await notifyUnmatchedProducts(hubspotBody, silent)
     await Promise.all([

@@ -27,7 +27,7 @@ Open [http://localhost:3000](http://localhost:3000). Sign-in is Google OAuth res
 
 Heroku Scheduler calls `GET /api/cron/daily` once a day with `Authorization: Bearer $CRON_SECRET`. The route responds `202` immediately and runs HubSpot sync → Freshdesk + notes sync → scoring and alerts in the background; results go to `heroku logs` (grep `cron`). Add `?silent=1` to record alerts without posting to Slack.
 
-Heroku Scheduler only supports every-10-minutes, hourly and daily frequencies, so anything that should run weekly has to be gated by day inside a daily job. Heroku's router also cuts HTTP requests off at 30 seconds, which is why the cron runs the sync steps in-process rather than calling the individual `/api/sync/*` endpoints over HTTP.
+Heroku Scheduler only supports every-10-minutes, hourly and daily frequencies, so anything that should run weekly has to be gated by day inside a daily job — the weekly `#customer_success` reminder goes out on the first weekday run of the week (UTC), recorded in `weekly_reminders` so it posts once. Heroku's router also cuts HTTP requests off at 30 seconds, which is why the cron runs the sync steps in-process rather than calling the individual `/api/sync/*` endpoints over HTTP.
 
 ## Configuration
 
@@ -43,6 +43,8 @@ Heroku Scheduler only supports every-10-minutes, hourly and daily frequencies, s
 | `ANTHROPIC_API_KEY` | Ticket/note sentiment (optional; skipped when unset) |
 | `SLACK_BOT_TOKEN` | Slack alerts |
 | `SLACK_CS_TEAM_CHANNEL` | Channel for team-wide notices (default `#cs-team`) |
+| `SLACK_CUSTOMER_SUCCESS_CHANNEL` | Channel for the weekly queue reminder (default: #customer_success's ID) |
+| `SLACK_OG_SUCCESS_GROUP_ID` | Slack user group mentioned in the weekly reminder (default: @og-success's ID) |
 | `SLACK_CS_MANAGER_EMAIL` | CS manager copied on escalated alerts |
 | `ALERTS_DISABLED` | Comma-separated alert types to stop posting, e.g. `no_product_usage,champion_gone_dark` |
 

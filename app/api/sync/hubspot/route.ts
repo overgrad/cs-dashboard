@@ -63,7 +63,7 @@ function championStatusFor(contact: ContactInfo | null, now: Date): string | nul
 // POST /api/sync/hubspot — pulls all deals, groups by company, upserts one row per company
 export async function POST(request: Request) {
   const authHeader = request.headers.get('authorization')
-  if (authHeader !== `Bearer ${process.env.SYNC_SECRET}`) {
+  if (!process.env.SYNC_SECRET || authHeader !== `Bearer ${process.env.SYNC_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

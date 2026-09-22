@@ -107,3 +107,11 @@ model Alert {
 
   @@map("alerts")
 }
+
+model WeeklyReminder {
+  weekStart      DateTime @id @map("week_start")
+  sentAt         DateTime @default(now()) @map("sent_at")
+  slackMessageTs String?  @map("slack_message_ts")
+
+  @@map("weekly_reminders")
+}
