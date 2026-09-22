@@ -49,7 +49,7 @@ async function notifyUnmatchedProducts(syncBody: string | null, silent: boolean)
   }
 }
 
-// GET /api/cron/daily — triggered daily by Heroku Scheduler (or Vercel Cron).
+// GET /api/cron/daily — triggered daily by Heroku Scheduler.
 // Responds immediately, then runs HubSpot sync → Freshdesk + notes sync → scoring
 // in the background. Results are written to the server logs.
 export async function GET(request: Request) {

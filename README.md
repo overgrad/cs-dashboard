@@ -1,36 +1,51 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CS Dashboard
 
-## Getting Started
+Customer success health dashboard for Overgrad. Pulls accounts, deals, notes and tickets from HubSpot and Freshdesk, scores account health, and sends Slack alerts. Next.js + Prisma (Postgres), deployed on **Heroku** — not Vercel.
 
-First, run the development server:
+## Local development
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000). Sign-in is Google OAuth restricted to `@overgrad.com` accounts.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Deployment (Heroku)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- App: `overgrad-cs-dashboard` (team `overgrad-pipeline`), served at https://cs.overgrad.com.
+- Deploy from `main` after a PR is merged:
 
-## Learn More
+  ```bash
+  git push https://git.heroku.com/overgrad-cs-dashboard.git HEAD:main
+  ```
 
-To learn more about Next.js, take a look at the following resources:
+- The `release` phase in the [Procfile](Procfile) runs `prisma migrate deploy`. Every change to `prisma/schema.prisma` must ship with a migration.
+- Secrets live only in Heroku config vars (`heroku config -a overgrad-cs-dashboard`).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Scheduled jobs
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Heroku Scheduler calls `GET /api/cron/daily` once a day with `Authorization: Bearer $CRON_SECRET`. The route responds `202` immediately and runs HubSpot sync → Freshdesk + notes sync → scoring and alerts in the background; results go to `heroku logs` (grep `cron`). Add `?silent=1` to record alerts without posting to Slack.
 
-## Deploy on Vercel
+Heroku Scheduler only supports every-10-minutes, hourly and daily frequencies, so anything that should run weekly has to be gated by day inside a daily job. Heroku's router also cuts HTTP requests off at 30 seconds, which is why the cron runs the sync steps in-process rather than calling the individual `/api/sync/*` endpoints over HTTP.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Configuration
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | Postgres connection (set by Heroku Postgres) |
+| `AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | NextAuth Google sign-in |
+| `NEXT_PUBLIC_APP_URL` | Public base URL, used for links in Slack messages |
+| `CRON_SECRET` | Bearer token for `/api/cron/daily` |
+| `SYNC_SECRET` | Bearer token for the `/api/sync/*` and `/api/score/run` endpoints |
+| `HUBSPOT_ACCESS_TOKEN` | HubSpot private app token |
+| `FRESHDESK_API_KEY`, `FRESHDESK_SUBDOMAIN` | Freshdesk ticket sync |
+| `ANTHROPIC_API_KEY` | Ticket/note sentiment (optional; skipped when unset) |
+| `SLACK_BOT_TOKEN` | Slack alerts |
+| `SLACK_CS_TEAM_CHANNEL` | Channel for team-wide notices (default `#cs-team`) |
+| `SLACK_CS_MANAGER_EMAIL` | CS manager copied on escalated alerts |
+| `ALERTS_DISABLED` | Comma-separated alert types to stop posting, e.g. `no_product_usage,champion_gone_dark` |
+
+## Product catalog
+
+ARR uses a generated copy of Finance's product catalog. When Finance classifies new products in cashflow-qbo, run `scripts/generate-product-catalog.py` to regenerate it.
