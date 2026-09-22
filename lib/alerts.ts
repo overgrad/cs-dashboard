@@ -46,9 +46,9 @@ async function checkRenewalAlerts(account: Account) {
   const daysUntil = Math.ceil(
     (account.renewalDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
   )
-  // Only alert for renewals in the next 12 months; ignore old deals.
-  // Renewals inside 30 days no longer get an individual alert — CS relies on
-  // the weekly #cs-team reminder and the dashboard queue for those instead.
+  // DM the owner at 90 and 60 days out (manager copied at 60). Renewals inside 30 days
+  // don't get an individual alert — the queue shows them and the weekly
+  // #customer_success reminder points CS there.
   if (daysUntil < 0 || daysUntil > 90 || daysUntil <= 30) return
 
   const triggerType = daysUntil <= 60 ? 'renewal_60' : 'renewal_90'
@@ -144,8 +144,8 @@ async function checkDivergenceAlert(
 async function checkInactivityAlerts(account: Account) {
   const now = Date.now()
 
-  // Note: "no CS activity in 60 days" no longer alerts individually — CS relies
-  // on the weekly #cs-team reminder and the dashboard queue for that instead.
+  // No CS activity isn't alerted per account — the queue flags it (past
+  // THRESHOLDS.NO_ACTIVITY_ALERT_DAYS) and the weekly #customer_success reminder points CS there.
 
   // No product usage: no educator at the account has been active in the product for N days.
   // (Previously keyed off the SIS roster upload date, which is a yearly event, not usage.)

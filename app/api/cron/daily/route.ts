@@ -4,6 +4,8 @@ import { POST as syncFreshdesk } from '@/app/api/sync/freshdesk/route'
 import { POST as syncNotes } from '@/app/api/sync/notes/route'
 import { POST as runScores } from '@/app/api/score/run/route'
 import { sendToChannel } from '@/lib/slack'
+import { sendWeeklyDigest } from '@/lib/weeklyDigest'
+import { CS_TEAM_CHANNEL } from '@/lib/config'
 
 type Handler = (request: Request) => Promise<Response>
 
@@ -38,9 +40,8 @@ async function notifyUnmatchedProducts(syncBody: string | null, silent: boolean)
     const parsed = JSON.parse(syncBody) as { debug?: { arrUnmatchedProducts?: string[] } }
     const unmatched = parsed.debug?.arrUnmatchedProducts ?? []
     if (unmatched.length === 0 || silent) return
-    const channel = process.env.SLACK_CS_TEAM_CHANNEL ?? '#cs-team'
     await sendToChannel(
-      channel,
+      CS_TEAM_CHANNEL,
       `⚠️ ${unmatched.length} HubSpot line item name(s) are not in Finance's product catalog and are being counted as non-ARR: ${unmatched.join(', ')}. ` +
         `Ask Finance to classify them in cashflow-qbo, then run scripts/generate-product-catalog.py in cs-dashboard.`,
     )
@@ -49,9 +50,26 @@ async function notifyUnmatchedProducts(syncBody: string | null, silent: boolean)
   }
 }
 
+// Heroku Scheduler has no weekly frequency, so the weekly reminder rides along with the
+// Monday (UTC) daily run.
+async function sendWeeklyReminder(silent: boolean) {
+  if (new Date().getUTCDay() !== 1) return
+  if (silent) {
+    console.log('[cron] weekly reminder skipped (silent)')
+    return
+  }
+  try {
+    const ts = await sendWeeklyDigest()
+    console.log(`[cron] weekly reminder ${ts ? 'posted' : 'not posted (no Slack token)'}`)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    console.error(`[cron] weekly reminder failed: ${message}`)
+  }
+}
+
 // GET /api/cron/daily — triggered daily by Heroku Scheduler.
 // Responds immediately, then runs HubSpot sync → Freshdesk + notes sync → scoring
-// in the background. Results are written to the server logs.
+// (plus the weekly reminder on Mondays) in the background. Results are written to the server logs.
 export async function GET(request: Request) {
   const authHeader = request.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -71,6 +89,7 @@ export async function GET(request: Request) {
       runStep('sync/notes', syncNotes),
     ])
     await runStep('score/run', runScores, silent ? '?silent=1' : '')
+    await sendWeeklyReminder(silent)
     console.log('[cron] daily run finished')
   })
 
