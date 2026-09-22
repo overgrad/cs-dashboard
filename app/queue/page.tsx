@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic'
 
 import { prisma } from '@/lib/prisma'
-import { daysAgo, requestNow } from '@/lib/dates'
+import { daysAgo, recentScoreWeeks, requestNow } from '@/lib/dates'
 import { activityFlags } from '@/lib/flags'
 import { THRESHOLDS } from '@/lib/config'
 import { computeUsageScore, computeInteractionsScore } from '@/lib/scoring'
@@ -195,7 +195,8 @@ export default async function QueuePage({
 }) {
   const { owner: ownerFilter, filter: activeFilter, q } = await searchParams
 
-  const sixWeeksAgo = daysAgo(6 * 7)
+  // Sparkline weeks, oldest first, ending with the current week
+  const sparkWeeks = recentScoreWeeks(6)
   const now = requestNow()
 
   const [accounts, allOwners] = await Promise.all([
@@ -209,7 +210,7 @@ export default async function QueuePage({
       orderBy: { name: 'asc' },
       include: {
         scoreHistory: {
-          where: { week: { gte: sixWeeksAgo } },
+          where: { week: { gte: sparkWeeks[0] } },
           orderBy: { week: 'asc' },
           select: { week: true, usageScore: true, interactionsScore: true },
         },
@@ -239,11 +240,8 @@ export default async function QueuePage({
     const historyMap = new Map(account.scoreHistory.map((h) => [h.week.toISOString(), h]))
     const sparkUsage: (number | null)[] = []
     const sparkInteractions: (number | null)[] = []
-    for (let w = 0; w < 6; w++) {
-      const weekDate = new Date(sixWeeksAgo.getTime() + w * 7 * 24 * 60 * 60 * 1000)
-      weekDate.setUTCHours(0, 0, 0, 0)
-      weekDate.setUTCDate(weekDate.getUTCDate() - weekDate.getUTCDay())
-      const entry = historyMap.get(weekDate.toISOString())
+    for (const week of sparkWeeks) {
+      const entry = historyMap.get(week.toISOString())
       sparkUsage.push(entry?.usageScore ?? null)
       sparkInteractions.push(entry?.interactionsScore ?? null)
     }

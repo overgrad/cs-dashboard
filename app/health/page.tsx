@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { prisma } from '@/lib/prisma'
 import { computeUsageScore, computeInteractionsScore } from '@/lib/scoring'
-import { daysAgo } from '@/lib/dates'
+import { daysAgo, recentScoreWeeks } from '@/lib/dates'
 import { seatUsage } from '@/app/components/SeatUsage'
 import { OwnerFilter } from '@/app/components/OwnerFilter'
 import { ScoreInfo } from '@/app/components/ScoreInfo'
@@ -48,7 +48,8 @@ export default async function HealthPage({
 }) {
   const { owner: ownerFilter, q } = await searchParams
 
-  const eightWeeksAgo = daysAgo(8 * 7)
+  // Sparkline weeks, oldest first, ending with the current week
+  const sparkWeeks = recentScoreWeeks(8)
 
   const [accounts, allOwners] = await Promise.all([
     prisma.account.findMany({
@@ -61,7 +62,7 @@ export default async function HealthPage({
       orderBy: { name: 'asc' },
       include: {
         scoreHistory: {
-          where: { week: { gte: eightWeeksAgo } },
+          where: { week: { gte: sparkWeeks[0] } },
           orderBy: { week: 'asc' },
           select: { week: true, usageScore: true, interactionsScore: true },
         },
@@ -92,11 +93,8 @@ export default async function HealthPage({
     const historyMap = new Map(account.scoreHistory.map((h) => [h.week.toISOString(), h]))
     const sparkUsage: (number | null)[] = []
     const sparkInteractions: (number | null)[] = []
-    for (let w = 0; w < 8; w++) {
-      const weekDate = new Date(eightWeeksAgo.getTime() + w * 7 * 24 * 60 * 60 * 1000)
-      weekDate.setUTCHours(0, 0, 0, 0)
-      weekDate.setUTCDate(weekDate.getUTCDate() - weekDate.getUTCDay())
-      const entry = historyMap.get(weekDate.toISOString())
+    for (const week of sparkWeeks) {
+      const entry = historyMap.get(week.toISOString())
       sparkUsage.push(entry?.usageScore ?? null)
       sparkInteractions.push(entry?.interactionsScore ?? null)
     }
