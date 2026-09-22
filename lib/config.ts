@@ -8,16 +8,21 @@ export const HS_PROPS = {
   AMOUNT: 'amount',
   OWNER_ID: 'hubspot_owner_id',
   LINE_ITEM_IDS: 'hs_line_item_ids',
-  ONBOARDING_DATE: 'onboarding_date',
   OVERGRAD_ID: 'overgrad_id',
-
-  // Deal-level properties
-  TOTAL_LICENSED_SEATS: 'total_licensed_seats',
 
   // Invoice properties (HubSpot Commerce Invoices object — native, not custom)
   INVOICE_STATUS: 'hs_invoice_status',           // draft | open | paid | voided
   INVOICE_DUE_DATE: 'hs_due_date',
   INVOICE_BALANCE_DUE: 'hs_balance_due',
+
+  // Company-level properties
+  ONBOARDING_COMPLETION_DATE: 'onboarding_completion_date',
+  COMPANY_LAST_EDUCATOR_ACTIVITY: 'last_educator_activity',
+  ROSTER_GRADE_COUNTS: ['grade_9_count', 'grade_10_count', 'grade_11_count', 'grade_12_count'], // active HS students by grade, written daily by the product
+
+  // Contact-level properties (product writes last_overgrad_activity daily for educators)
+  CONTACT_LAST_ACTIVITY: 'last_overgrad_activity',
+  CONTACT_JOB_TITLE: 'jobtitle',
 
   // Company-level properties (Admin Console data synced into HubSpot)
   WAU_EDUCATORS: 'wau',
@@ -28,6 +33,13 @@ export const HS_PROPS = {
   LAST_DATA_UPLOAD_DATE: 'date_of_last_data_upload',
 } as const
 
+// Alert thresholds can be tuned without a deploy via config vars, e.g. CHAMPION_DARK_DAYS=60
+const envInt = (name: string, fallback: number) => {
+  const v = process.env[name]
+  const n = v ? parseInt(v, 10) : NaN
+  return Number.isFinite(n) && n > 0 ? n : fallback
+}
+
 // Scoring thresholds — calibrated against ~95% renewal baseline
 export const THRESHOLDS = {
   WAU_PCT_GREEN: 30,
@@ -37,9 +49,17 @@ export const THRESHOLDS = {
   RECENCY_GREEN_MONTHS: 2,    // was 1 — quarterly CS cadence is normal for healthy accounts
   RECENCY_YELLOW_MONTHS: 9,   // was 6 — 9 months without contact = genuinely at risk
   SCORE_DROP_ALERT_PTS: 10,
-  NO_USAGE_ALERT_DAYS: 30,
-  CHAMPION_DARK_DAYS: 30,
-} as const
+  NO_ACTIVITY_ALERT_DAYS: envInt('NO_ACTIVITY_ALERT_DAYS', 90),  // no CS touchpoint (meeting, email, note, call, task) — flagged in the queue
+  NO_USAGE_ALERT_DAYS: envInt('NO_USAGE_ALERT_DAYS', 30),        // no educator activity in the product
+  CHAMPION_DARK_DAYS: envInt('CHAMPION_DARK_DAYS', 60),          // primary contact inactive in the product
+}
+
+// Alert types that should not fire at all. Comma-separated config var, e.g.
+// ALERTS_DISABLED=no_product_usage,champion_gone_dark
+// Names: renewal, missing_data, score_divergence, no_product_usage, champion_gone_dark
+export const ALERTS_DISABLED = new Set(
+  (process.env.ALERTS_DISABLED ?? '').split(',').map((s) => s.trim()).filter(Boolean),
+)
 
 // Alert deduplication window — won't resend the same alert within this many hours
 export const ALERT_COOLDOWN_HOURS = 7 * 24

@@ -20,10 +20,13 @@ export interface FreshdeskTicket {
   subject: string
   created_at: string // ISO 8601
   status: number    // 2=open, 3=pending, 4=resolved, 5=closed
+  tags?: string[]
+  description_text?: string
+  requester?: { id: number; name?: string; email?: string }
   custom_fields: Record<string, unknown>
 }
 
-// Fetch all tickets updated since a given date, with custom_fields included.
+// Fetch all tickets updated since a given date, with requester + description included.
 // Freshdesk paginates at 100 per page; we stop when a page returns fewer than 100.
 export async function getTicketsSince(since: Date): Promise<FreshdeskTicket[]> {
   const tickets: FreshdeskTicket[] = []
@@ -32,7 +35,7 @@ export async function getTicketsSince(since: Date): Promise<FreshdeskTicket[]> {
 
   while (true) {
     const batch: FreshdeskTicket[] = await freshdeskFetch(
-      `/tickets?updated_since=${encodeURIComponent(updatedSince)}&per_page=100&page=${page}&order_by=created_at&order_type=asc`
+      `/tickets?updated_since=${encodeURIComponent(updatedSince)}&include=requester,description&per_page=100&page=${page}&order_by=created_at&order_type=asc`
     )
     tickets.push(...batch)
     if (batch.length < 100) break
@@ -42,6 +45,22 @@ export async function getTicketsSince(since: Date): Promise<FreshdeskTicket[]> {
   }
 
   return tickets
+}
+
+// Internal senders and automated university replies are never customer contact.
+export function isCustomerTicket(t: FreshdeskTicket): boolean {
+  const email = (t.requester?.email ?? '').toLowerCase()
+  if (!email) return false
+  if (email.endsWith('@overgrad.com')) return false
+  if ((t.tags ?? []).some((tag) => /auto-?respon|auto-?reply/i.test(tag))) return false
+  if (/^(no-?reply|do-?not-?reply|noreply)@/.test(email)) return false
+  return true
+}
+
+export function requesterDomain(t: FreshdeskTicket): string | null {
+  const email = (t.requester?.email ?? '').toLowerCase()
+  const at = email.lastIndexOf('@')
+  return at > 0 ? email.slice(at + 1) : null
 }
 
 export function groupTicketsByDistrictId(

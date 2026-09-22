@@ -1,13 +1,15 @@
 import type { Account } from '@/app/generated/prisma/client'
 import { prisma } from './prisma'
 import {
+  alertContext,
   sendDm,
   buildRenewalAlert,
   buildMissingDataAlert,
   buildDivergenceAlert,
   buildInactivityAlert,
 } from './slack'
-import { THRESHOLDS, ALERT_COOLDOWN_HOURS } from './config'
+import { THRESHOLDS, ALERT_COOLDOWN_HOURS, ALERTS_DISABLED } from './config'
+import type { CompanyArr } from './arr'
 
 // ─── Deduplication ────────────────────────────────────────────────────────────
 
@@ -34,10 +36,12 @@ async function recordAlert(
   })
 }
 
+const isDisabled = (name: string) => ALERTS_DISABLED.has(name)
+
 // ─── Individual alert checks ──────────────────────────────────────────────────
 
 async function checkRenewalAlerts(account: Account) {
-  if (!account.renewalDate) return
+  if (isDisabled('renewal') || !account.renewalDate) return
 
   const daysUntil = Math.ceil(
     (account.renewalDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
@@ -71,10 +75,13 @@ async function checkRenewalAlerts(account: Account) {
 }
 
 async function checkMissingDataAlerts(account: Account) {
+  if (isDisabled('missing_data')) return
+  const latestDeal = (account.arrBreakdown as CompanyArr | null)?.deals?.[0]
   const missing = [
     !account.renewalDate && 'close date',
     !account.hasLineItems && 'line items',
     !account.primaryContact && 'contact',
+    latestDeal && !latestDeal.contractEnd && 'contract end date',
   ].filter(Boolean) as string[]
 
   if (missing.length === 0) return
@@ -114,7 +121,7 @@ async function checkDivergenceAlert(
   if (!usageUp || !interactionsDown) return
 
   const triggerType = 'score_divergence'
-  if (await hasRecentAlert(account.id, triggerType)) return
+  if (isDisabled(triggerType) || (await hasRecentAlert(account.id, triggerType))) return
 
   const { text, blocks } = buildDivergenceAlert({
     accountId: account.id,
@@ -140,13 +147,14 @@ async function checkInactivityAlerts(account: Account) {
   // Note: "no CS activity in 60 days" no longer alerts individually — CS relies
   // on the weekly #cs-team reminder and the dashboard queue for that instead.
 
-  // No product usage in 30 days (via lastDataUploadDate as proxy until PostHog is live)
-  if (account.lastDataUploadDate) {
+  // No product usage: no educator at the account has been active in the product for N days.
+  // (Previously keyed off the SIS roster upload date, which is a yearly event, not usage.)
+  if (!isDisabled('no_product_usage') && account.lastEducatorActivity) {
     const daysSince = Math.floor(
-      (now - account.lastDataUploadDate.getTime()) / (1000 * 60 * 60 * 24)
+      (now - account.lastEducatorActivity.getTime()) / (1000 * 60 * 60 * 24)
     )
     if (daysSince >= THRESHOLDS.NO_USAGE_ALERT_DAYS) {
-      const triggerType = 'no_product_usage_30d'
+      const triggerType = 'no_product_usage_30d' // trigger name kept stable for the cooldown; threshold is configurable
       if (!(await hasRecentAlert(account.id, triggerType))) {
         const { text, blocks } = buildInactivityAlert({
           accountId: account.id,
@@ -165,7 +173,7 @@ async function checkInactivityAlerts(account: Account) {
   }
 
   // Champion gone dark
-  if (account.championStatus === 'gone_dark') {
+  if (!isDisabled('champion_gone_dark') && account.championStatus === 'gone_dark') {
     const triggerType = 'champion_gone_dark'
     if (!(await hasRecentAlert(account.id, triggerType))) {
       const { text, blocks } = buildInactivityAlert({
@@ -186,12 +194,19 @@ async function checkInactivityAlerts(account: Account) {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
+export interface AlertOptions {
+  // Evaluate and record alerts but do not post to Slack (cooldown still applies)
+  silent?: boolean
+}
+
 // Renewal alerts — call for every deal with an upcoming renewal (next 12 months)
-export async function runRenewalAlerts(account: Account) {
-  await Promise.allSettled([
-    checkRenewalAlerts(account),
-    checkMissingDataAlerts(account),
-  ])
+export async function runRenewalAlerts(account: Account, opts: AlertOptions = {}) {
+  await alertContext.run({ silent: !!opts.silent }, () =>
+    Promise.allSettled([
+      checkRenewalAlerts(account),
+      checkMissingDataAlerts(account),
+    ]),
+  )
 }
 
 // Health/activity alerts — call once per company (primary deal only)
@@ -199,10 +214,13 @@ export async function runHealthAlerts(
   account: Account,
   previousScores: { usageScore: number | null; interactionsScore: number | null } | null,
   currentUsage: number | null,
-  currentInteractions: number | null
+  currentInteractions: number | null,
+  opts: AlertOptions = {},
 ) {
-  await Promise.allSettled([
-    checkDivergenceAlert(account, previousScores, currentUsage, currentInteractions),
-    checkInactivityAlerts(account),
-  ])
+  await alertContext.run({ silent: !!opts.silent }, () =>
+    Promise.allSettled([
+      checkDivergenceAlert(account, previousScores, currentUsage, currentInteractions),
+      checkInactivityAlerts(account),
+    ]),
+  )
 }

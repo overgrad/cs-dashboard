@@ -50,8 +50,10 @@ function scoreWAU(wau: number | null, label: string): ScoreDimension {
   return { label, score, weight, value: `${pct.toFixed(0)}%` }
 }
 
-function scoreCompletion80(pct: number | null, label: string, weight: number): ScoreDimension {
-  if (pct === null) return { label, score: 'na', weight, value: 'no data' }
+// HubSpot stores these as decimal ratios (0.98 = 98%), same as WAU
+function scoreCompletion80(ratio: number | null, label: string, weight: number): ScoreDimension {
+  if (ratio === null) return { label, score: 'na', weight, value: 'no data' }
+  const pct = ratio * 100
   const score =
     pct > THRESHOLDS.COMPLETION_PCT_GREEN
       ? 'green'

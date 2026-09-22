@@ -7,6 +7,10 @@ import { computeUsageScore, computeInteractionsScore } from '@/lib/scoring'
 import { Sparkline } from '@/app/components/Sparkline'
 import { TabGroup } from '@/app/components/TabGroup'
 import type { DimScore } from '@/lib/scoring'
+import { ArrBreakdown } from '@/app/components/ArrBreakdown'
+import { SeatUsage } from '@/app/components/SeatUsage'
+import { activityFlags } from '@/lib/flags'
+import type { CompanyArr } from '@/lib/arr'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -163,11 +167,13 @@ export default async function AccountPage({
 
   const days = daysUntil(account.renewalDate)
   const isAtRisk = combined !== null && combined < 50
+  const flags = activityFlags(account, new Date())
   const renewalSoon = days !== null && days > 0 && days <= 60
 
   // ── Usage tab ──
   const usageTab = (
     <div className="px-1 py-2">
+      <SeatUsage account={account} />
       {usage.components.map((d) => (
         <DimRow key={d.label} label={d.label} value={d.value} score={d.score} />
       ))}
@@ -198,8 +204,7 @@ export default async function AccountPage({
         {[
           { label: 'Last CS touchpoint', value: account.lastCsTouchpoint ? `${daysAgo(account.lastCsTouchpoint)} days ago` : null },
           { label: 'Last customer contact', value: account.lastCustomerContact ? `${daysAgo(account.lastCustomerContact)} days ago` : null },
-          { label: 'Last educator login', value: null },
-          { label: 'Last student login', value: null },
+          { label: 'Last educator activity', value: account.lastEducatorActivity ? `${daysAgo(account.lastEducatorActivity)} days ago` : null },
           { label: 'Meeting sentiment', value: account.meetingSentiment },
           { label: 'Ticket sentiment', value: account.ticketSentiment },
           { label: 'Ticket volume trend', value: account.ticketVolumeTrend },
@@ -281,7 +286,11 @@ export default async function AccountPage({
             <p className="mt-0.5 text-sm text-slate-500">
               {[
                 account.owner && `Owner: ${account.owner}`,
-                account.arr && formatARR(account.arr) + ' ARR',
+                account.arr
+                  ? formatARR(account.arr) + ' ARR'
+                  : account.latestContractArr
+                    ? `No active contract (last ${formatARR(account.latestContractArr)}${account.latestContractEnd ? `, ended ${shortDate(account.latestContractEnd)}` : ''})`
+                    : null,
                 account.renewalDate && `Renewal ${shortDate(account.renewalDate)}`,
                 account.primaryContact && `Champion: ${account.primaryContact}`,
               ]
@@ -302,6 +311,26 @@ export default async function AccountPage({
               {account.isOnboarding && (
                 <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700">
                   Onboarding
+                </span>
+              )}
+              {account.status === 'lapsed' && (
+                <span className="rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-semibold text-orange-700">
+                  Contract lapsed
+                </span>
+              )}
+              {flags.noCsActivityDays !== null && (
+                <span className="rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-700">
+                  No CS activity {flags.noCsActivityDays}d
+                </span>
+              )}
+              {flags.noProductUsageDays !== null && (
+                <span className="rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-700">
+                  No product usage {flags.noProductUsageDays}d
+                </span>
+              )}
+              {flags.championDark && (
+                <span className="rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-semibold text-purple-700">
+                  Champion gone dark
                 </span>
               )}
               {account.dealStage && (
@@ -338,6 +367,16 @@ export default async function AccountPage({
             { label: 'Interactions', content: interactionsTab },
             { label: 'Notes', content: notesTab },
             { label: 'Activity', content: activityTab },
+            {
+              label: 'ARR',
+              content: (
+                <ArrBreakdown
+                  breakdown={(account.arrBreakdown as unknown as CompanyArr | null) ?? null}
+                  currentArr={account.arr}
+                  asOf={account.arrAsOf}
+                />
+              ),
+            },
           ]}
         />
       </div>

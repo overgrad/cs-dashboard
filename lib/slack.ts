@@ -1,17 +1,23 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { WebClient, type Block, type KnownBlock } from '@slack/web-api'
 
 const client = process.env.SLACK_BOT_TOKEN
   ? new WebClient(process.env.SLACK_BOT_TOKEN)
   : null
 
-// Sends a message to a channel. Falls back to console.log when no token is set.
+// When run with { silent: true }, alerts are evaluated and recorded (so the
+// cooldown still applies) but nothing is posted to Slack.
+export const alertContext = new AsyncLocalStorage<{ silent: boolean }>()
+const isSilent = () => alertContext.getStore()?.silent ?? false
+
+// Sends a message to a channel. Falls back to console.log when no token is set or in silent mode.
 export async function sendToChannel(
   channel: string,
   text: string,
   blocks?: (KnownBlock | Block)[]
 ) {
-  if (!client) {
-    console.log(`[Slack→${channel}] ${text}`)
+  if (!client || isSilent()) {
+    console.log(`[Slack${isSilent() ? ' silent' : ''}→${channel}] ${text}`)
     return null
   }
   const result = await client.chat.postMessage({ channel, text, blocks })
@@ -24,8 +30,8 @@ export async function sendDm(
   text: string,
   blocks?: (KnownBlock | Block)[]
 ): Promise<string | null> {
-  if (!client) {
-    console.log(`[Slack DM→${email}] ${text}`)
+  if (!client || isSilent()) {
+    console.log(`[Slack${isSilent() ? ' silent' : ''} DM→${email}] ${text}`)
     return null
   }
   try {

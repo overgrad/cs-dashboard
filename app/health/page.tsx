@@ -2,7 +2,8 @@ export const dynamic = 'force-dynamic'
 
 import { prisma } from '@/lib/prisma'
 import { computeUsageScore, computeInteractionsScore } from '@/lib/scoring'
-import { SectionHeader } from '@/app/components/SectionHeader'
+import { daysAgo } from '@/lib/dates'
+import { seatUsage } from '@/app/components/SeatUsage'
 import { OwnerFilter } from '@/app/components/OwnerFilter'
 import { ScoreInfo } from '@/app/components/ScoreInfo'
 import { Sparkline } from '@/app/components/Sparkline'
@@ -47,12 +48,13 @@ export default async function HealthPage({
 }) {
   const { owner: ownerFilter, q } = await searchParams
 
-  const eightWeeksAgo = new Date(Date.now() - 8 * 7 * 24 * 60 * 60 * 1000)
+  const eightWeeksAgo = daysAgo(8 * 7)
 
   const [accounts, allOwners] = await Promise.all([
     prisma.account.findMany({
       where: {
         isOnboarding: false,
+        status: { not: 'churned' },
         ...(ownerFilter ? { owner: ownerFilter } : {}),
         ...(q ? { name: { contains: q, mode: 'insensitive' as const } } : {}),
       },
@@ -75,8 +77,8 @@ export default async function HealthPage({
       .then((rows) => rows.map((r) => r.owner!)),
   ])
 
-  const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000)
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+  const sixtyDaysAgo = daysAgo(60)
+  const thirtyDaysAgo = daysAgo(30)
 
   const scored = accounts.map((account) => {
     const usage = computeUsageScore(account)
@@ -260,6 +262,7 @@ export default async function HealthPage({
                 </th>
                 <th className="px-4 py-2 text-center">8-wk</th>
                 <th className="px-4 py-2 text-left">Renewal</th>
+                <th className="px-4 py-2 text-right" title="Students with accounts as a share of licensed students">Seats used</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -275,11 +278,15 @@ export default async function HealthPage({
                     <td className="px-4 py-3">
                       <a href={`/accounts/${account.id}`} className="hover:text-indigo-600">
                         <span className="block font-medium text-slate-900">{account.name}</span>
-                        {account.arr !== null && (
+                        {account.arr ? (
                           <span className="block text-xs text-slate-400">
                             ${Math.round(account.arr / 1000)}k ARR
                           </span>
-                        )}
+                        ) : account.latestContractArr ? (
+                          <span className="block text-xs text-slate-400">
+                            no active contract · last ${Math.round(account.latestContractArr / 1000)}k
+                          </span>
+                        ) : null}
                       </a>
                     </td>
                     <td className="px-4 py-3">
@@ -308,6 +315,18 @@ export default async function HealthPage({
                       ) : (
                         formatRenewal(account.renewalDate, days)
                       )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {(() => {
+                        const { withAccounts, pctOfLicensed } = seatUsage(account)
+                        if (pctOfLicensed === null) return <span className="text-xs text-slate-400">—</span>
+                        const cls = pctOfLicensed >= 70 ? 'text-emerald-700' : pctOfLicensed >= 40 ? 'text-yellow-700' : 'text-red-700'
+                        return (
+                          <span className={`text-sm font-medium ${cls}`} title={`${withAccounts?.toLocaleString('en-US')} of ${account.licensedStudents?.toLocaleString('en-US')} licensed students have accounts`}>
+                            {pctOfLicensed}%
+                          </span>
+                        )
+                      })()}
                     </td>
                   </tr>
                 )

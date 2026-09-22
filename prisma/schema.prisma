@@ -13,11 +13,17 @@ model Account {
   hubspotId      String?   @map("hubspot_id")           // Primary deal ID
   overgradId     String?   @map("overgrad_id")
   name           String
+  status         String    @default("active") // active | lapsed | churned — see lib/flags.ts
+  domain         String?   // HubSpot company domain — used to match Freshdesk requesters
   owner          String?
   ownerEmail     String?   @map("owner_email")
   renewalDate    DateTime? @map("renewal_date")
   dealStage      String?   @map("deal_stage")
-  arr            Float?
+  arr            Float?    // Current ARR — Finance definition, see lib/arr.ts
+  latestContractArr  Float?    @map("latest_contract_arr")
+  latestContractEnd  DateTime? @map("latest_contract_end")
+  arrBreakdown       Json?     @map("arr_breakdown")
+  arrAsOf            DateTime? @map("arr_as_of")
   primaryContact String?   @map("primary_contact")
   contactEmail   String?   @map("contact_email")
   hasLineItems   Boolean   @default(false) @map("has_line_items")
@@ -26,14 +32,18 @@ model Account {
   unpaidInvoiceDueDate DateTime? @map("unpaid_invoice_due_date")
   onboardingDate DateTime? @map("onboarding_date")
   isOnboarding   Boolean   @default(false) @map("is_onboarding")
-  championStatus              String?   @map("champion_status")
+  championStatus              String?   @map("champion_status")  // 'stable' | 'gone_dark' from primary contact's last_overgrad_activity
+  lastEducatorActivity        DateTime? @map("last_educator_activity")
   // Scoring inputs sourced from HubSpot company properties (Admin Console data)
   studentsCompletedSetupPct   Float?    @map("students_completed_setup_pct")
   careerMilestoneCompletionPct Float?   @map("career_milestone_completion_pct")
   collegeMilestoneCompletionPct Float?  @map("college_milestone_completion_pct")
   commonAppLinking            Float?    @map("common_app_linking")
   lastDataUploadDate          DateTime? @map("last_data_upload_date")
-  totalLicensedSeats          Int?      @map("total_licensed_seats")
+  // Seats bought vs students using them (see lib/arr.ts LICENSED_STUDENTS_* and the product's roster counts)
+  licensedStudents            Int?      @map("licensed_students")
+  licensedMiddleSchool        Int?      @map("licensed_middle_school")
+  rosteredStudents            Int?      @map("rostered_students")
   // Scoring inputs populated by PostHog sync (Milestone 3)
   wauEducators                Float?    @map("wau_educators")
   wauStudents                 Float?    @map("wau_students")
