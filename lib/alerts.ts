@@ -46,16 +46,14 @@ async function checkRenewalAlerts(account: Account) {
   const daysUntil = Math.ceil(
     (account.renewalDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
   )
-  // DM the owner at 90 and 60 days out (manager copied at 60). Renewals inside 30 days
-  // don't get an individual alert — the queue shows them and the weekly
-  // #customer_success reminder points CS there.
-  if (daysUntil < 0 || daysUntil > 90 || daysUntil <= 30) return
+  // DM the owner while the renewal is 31–90 days out, copying the CS manager inside 60 days.
+  // The alert cooldown repeats that weekly within each tier. Renewals inside 30 days don't
+  // get an individual alert — they're on the queue, and the weekly #customer_success
+  // reminder points CS there.
+  if (daysUntil <= 30 || daysUntil > 90) return
 
   const triggerType = daysUntil <= 60 ? 'renewal_60' : 'renewal_90'
-  const sendToManager = daysUntil <= 60
-
   if (await hasRecentAlert(account.id, triggerType)) return
-  if (!account.ownerEmail) return
 
   const { text, blocks } = buildRenewalAlert({
     accountId: account.id,
@@ -66,8 +64,9 @@ async function checkRenewalAlerts(account: Account) {
     arr: account.arr,
   })
 
-  const ts = await sendDm(account.ownerEmail, text, blocks)
-  if (sendToManager && process.env.SLACK_CS_MANAGER_EMAIL) {
+  // Unowned accounts still reach the manager inside 60 days.
+  const ts = account.ownerEmail ? await sendDm(account.ownerEmail, text, blocks) : null
+  if (triggerType === 'renewal_60' && process.env.SLACK_CS_MANAGER_EMAIL) {
     await sendDm(process.env.SLACK_CS_MANAGER_EMAIL, text, blocks)
   }
 
@@ -144,8 +143,9 @@ async function checkDivergenceAlert(
 async function checkInactivityAlerts(account: Account) {
   const now = Date.now()
 
-  // No CS activity isn't alerted per account — the queue flags it (past
-  // THRESHOLDS.NO_ACTIVITY_ALERT_DAYS) and the weekly #customer_success reminder points CS there.
+  // No CS activity isn't alerted per account. The account page shows it past
+  // THRESHOLDS.NO_ACTIVITY_ALERT_DAYS; the queue lists the account once there's been no CS
+  // touchpoint and no customer contact for that long.
 
   // No product usage: no educator at the account has been active in the product for N days.
   // (Previously keyed off the SIS roster upload date, which is a yearly event, not usage.)

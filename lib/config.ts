@@ -64,9 +64,11 @@ export const ALERTS_DISABLED = new Set(
 // Alert deduplication window — won't resend the same alert within this many hours
 export const ALERT_COOLDOWN_HOURS = 7 * 24
 
+// Public base URL, used for links in Slack messages
+export const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+
 // Slack
-export const CS_TEAM_CHANNEL = process.env.SLACK_CS_TEAM_CHANNEL ?? '#cs-team'
-export const CUSTOMER_SUCCESS_CHANNEL =
-  process.env.SLACK_CUSTOMER_SUCCESS_CHANNEL ?? 'C015PDY6E4V'
+export const CS_TEAM_CHANNEL = process.env.SLACK_CS_TEAM_CHANNEL || '#cs-team'
+export const CUSTOMER_SUCCESS_CHANNEL = process.env.SLACK_CUSTOMER_SUCCESS_CHANNEL || 'C015PDY6E4V'
 // og-success user group — resolved from past mentions in #customer_success
-export const OG_SUCCESS_GROUP_ID = 'S02ANQF9N9W'
+export const OG_SUCCESS_GROUP_ID = process.env.SLACK_OG_SUCCESS_GROUP_ID || 'S02ANQF9N9W'

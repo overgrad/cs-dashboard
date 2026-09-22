@@ -8,7 +8,7 @@ import { analyzeSentiment } from '@/lib/sentiment'
 // emails) and lastCustomerContact (incoming emails, or a newer Freshdesk ticket if already set).
 export async function POST(request: Request) {
   const authHeader = request.headers.get('authorization')
-  if (authHeader !== `Bearer ${process.env.SYNC_SECRET}`) {
+  if (!process.env.SYNC_SECRET || authHeader !== `Bearer ${process.env.SYNC_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 

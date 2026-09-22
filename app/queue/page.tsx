@@ -380,7 +380,7 @@ export default async function QueuePage({
         <FilterCard
           label="No activity"
           value={noActivity.length}
-          sub="60+ days no CS contact"
+          sub={`${THRESHOLDS.NO_ACTIVITY_ALERT_DAYS}+ days no CS or customer contact`}
           valueClass={noActivity.length > 0 ? 'text-amber-600' : 'text-slate-900'}
           href={filterHref('noactivity', activeFilter, ownerFilter)}
           active={activeFilter === 'noactivity'}

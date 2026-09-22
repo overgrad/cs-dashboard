@@ -1,8 +1,8 @@
 import { THRESHOLDS } from './config'
 
-// Activity conditions shown on account and queue pages. These mirror the activity alerts
-// (no CS activity / no product usage / champion gone dark) so CS sees them in the app even
-// when Slack delivery for those alerts is turned off via ALERTS_DISABLED.
+// Activity conditions shown on account and queue pages. No product usage and champion gone
+// dark mirror the Slack alerts, so CS sees them even when ALERTS_DISABLED turns those off;
+// no CS activity is only shown in the app (it no longer alerts in Slack).
 export interface ActivityFlags {
   noCsActivityDays: number | null   // set when past THRESHOLDS.NO_ACTIVITY_ALERT_DAYS
   noProductUsageDays: number | null // set when past THRESHOLDS.NO_USAGE_ALERT_DAYS

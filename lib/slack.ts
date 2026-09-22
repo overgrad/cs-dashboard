@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { WebClient, type Block, type KnownBlock } from '@slack/web-api'
+import { APP_URL } from './config'
 
 const client = process.env.SLACK_BOT_TOKEN
   ? new WebClient(process.env.SLACK_BOT_TOKEN)
@@ -47,8 +48,6 @@ export async function sendDm(
 }
 
 // ─── Message builders ─────────────────────────────────────────────────────────
-
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
 
 function accountLink(accountId: string, name: string) {
   return `<${APP_URL}/accounts/${accountId}|${name}>`
@@ -132,15 +131,13 @@ export function buildInactivityAlert(opts: {
   ownerName: string | null
   ownerEmail: string | null
   daysSinceActivity: number
-  kind: 'cs_activity' | 'product_usage' | 'champion_dark'
+  kind: 'product_usage' | 'champion_dark'
 }) {
   const { accountId, accountName, ownerName, ownerEmail, daysSinceActivity, kind } = opts
   const label =
-    kind === 'cs_activity'
-      ? `No CS activity in ${daysSinceActivity} days`
-      : kind === 'product_usage'
-        ? `No product usage in ${daysSinceActivity} days`
-        : `Champion contact gone dark (${daysSinceActivity}+ days)`
+    kind === 'product_usage'
+      ? `No product usage in ${daysSinceActivity} days`
+      : `Champion contact gone dark (${daysSinceActivity}+ days)`
   const emoji = kind === 'champion_dark' ? '👻' : '😶'
   const text = `${label}: ${accountName}`
   const blocks: KnownBlock[] = [
