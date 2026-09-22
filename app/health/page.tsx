@@ -2,7 +2,9 @@ export const dynamic = 'force-dynamic'
 
 import { prisma } from '@/lib/prisma'
 import { computeUsageScore, computeInteractionsScore } from '@/lib/scoring'
-import { daysAgo, recentScoreWeeks } from '@/lib/dates'
+import { daysAgo, recentScoreWeeks, requestNow } from '@/lib/dates'
+import { activityFlags } from '@/lib/flags'
+import { THRESHOLDS } from '@/lib/config'
 import { seatUsage } from '@/app/components/SeatUsage'
 import { OwnerFilter } from '@/app/components/OwnerFilter'
 import { ScoreInfo } from '@/app/components/ScoreInfo'
@@ -78,8 +80,10 @@ export default async function HealthPage({
       .then((rows) => rows.map((r) => r.owner!)),
   ])
 
-  const sixtyDaysAgo = daysAgo(60)
-  const thirtyDaysAgo = daysAgo(30)
+  // Same thresholds and signals as the queue and account pages (configurable via
+  // NO_ACTIVITY_ALERT_DAYS / NO_USAGE_ALERT_DAYS)
+  const now = requestNow()
+  const activityCutoff = daysAgo(THRESHOLDS.NO_ACTIVITY_ALERT_DAYS)
 
   const scored = accounts.map((account) => {
     const usage = computeUsageScore(account)
@@ -109,15 +113,13 @@ export default async function HealthPage({
 
   const noActivity = scored.filter(
     (s) =>
-      (!s.account.lastCsTouchpoint || s.account.lastCsTouchpoint < sixtyDaysAgo) &&
-      (!s.account.lastCustomerContact || s.account.lastCustomerContact < sixtyDaysAgo),
+      (!s.account.lastCsTouchpoint || s.account.lastCsTouchpoint < activityCutoff) &&
+      (!s.account.lastCustomerContact || s.account.lastCustomerContact < activityCutoff),
   )
 
   // Only count companies where we track upload date and it's gone stale
-  const noUsage = scored.filter(
-    (s) =>
-      s.account.lastDataUploadDate !== null && s.account.lastDataUploadDate < thirtyDaysAgo,
-  )
+  // No educator active in the product — not the roster upload date, which is a yearly event
+  const noUsage = scored.filter((s) => activityFlags(s.account, now).noProductUsageDays !== null)
 
   const scoreDropped = scored.filter((s) => {
     const vals = s.sparkCombined.filter((v): v is number => v !== null)
@@ -175,15 +177,15 @@ export default async function HealthPage({
       {/* Summary cards */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <SummaryCard
-          label="No activity 60+ days"
+          label={`No activity ${THRESHOLDS.NO_ACTIVITY_ALERT_DAYS}+ days`}
           value={noActivity.length}
           sub="no CS or customer contact"
           valueClass={noActivity.length > 0 ? 'text-red-600' : 'text-slate-900'}
         />
         <SummaryCard
-          label="No usage 30+ days"
+          label={`No usage ${THRESHOLDS.NO_USAGE_ALERT_DAYS}+ days`}
           value={noUsage.length}
-          sub="stale data upload"
+          sub="no educator activity"
           valueClass={noUsage.length > 0 ? 'text-red-600' : 'text-slate-900'}
         />
         <SummaryCard
