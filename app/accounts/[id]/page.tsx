@@ -9,6 +9,7 @@ import { TabGroup } from '@/app/components/TabGroup'
 import type { DimScore } from '@/lib/scoring'
 import { ArrBreakdown } from '@/app/components/ArrBreakdown'
 import { SeatUsage } from '@/app/components/SeatUsage'
+import { AccountNotesPanel } from '@/app/components/AccountNotesPanel'
 import { activityFlags } from '@/lib/flags'
 import type { CompanyArr } from '@/lib/arr'
 
@@ -127,7 +128,7 @@ export default async function AccountPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const [account, scoreHistory, queueActions] = await Promise.all([
+  const [account, scoreHistory, queueActions, notes] = await Promise.all([
     prisma.account.findUnique({ where: { id } }),
     prisma.scoreHistory.findMany({
       where: { accountId: id },
@@ -138,8 +139,19 @@ export default async function AccountPage({
       where: { accountId: id },
       orderBy: { createdAt: 'desc' },
     }),
+    prisma.note.findMany({
+      where: { accountId: id },
+      orderBy: { createdAt: 'desc' },
+    }),
   ])
   if (!account) notFound()
+
+  const noteItems = notes.map((n) => ({
+    id: n.id,
+    author: n.author,
+    body: n.body,
+    createdAtLabel: n.createdAt.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }),
+  }))
 
   const usage = computeUsageScore(account)
   const interactions = computeInteractionsScore(account)
@@ -216,14 +228,13 @@ export default async function AccountPage({
           </div>
         ))}
       </div>
-      {account.contactEmail && (
-        <a
-          href={`mailto:${account.contactEmail}?subject=Checking in — ${account.name}`}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
-        >
-          Email {account.primaryContact ?? 'contact'} →
-        </a>
-      )}
+      <AccountNotesPanel
+        accountId={account.id}
+        accountName={account.name}
+        notes={noteItems}
+        contactEmail={account.contactEmail}
+        contactName={account.primaryContact}
+      />
     </div>
   )
 

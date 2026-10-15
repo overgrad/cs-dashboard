@@ -60,8 +60,21 @@ model Account {
   scoreHistory ScoreHistory[]
   alerts       Alert[]
   queueActions QueueAction[]
+  notes        Note[]
 
   @@map("accounts")
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  accountId String   @map("account_id")
+  author    String
+  body      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@map("notes")
 }
 
 model QueueAction {
