@@ -318,9 +318,9 @@ export default async function AccountPage({
                   Contract lapsed
                 </span>
               )}
-              {flags.noCsActivityDays !== null && (
+              {flags.noContactDays !== null && (
                 <span className="rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-700">
-                  No CS activity {flags.noCsActivityDays}d
+                  No contact {flags.noContactDays}d
                 </span>
               )}
               {flags.noProductUsageDays !== null && (

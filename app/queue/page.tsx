@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { prisma } from '@/lib/prisma'
 import { daysAgo, recentScoreWeeks, requestNow } from '@/lib/dates'
-import { activityFlags } from '@/lib/flags'
+import { activityFlags, lastContact } from '@/lib/flags'
 import { THRESHOLDS } from '@/lib/config'
 import { computeUsageScore, computeInteractionsScore } from '@/lib/scoring'
 import { SectionHeader } from '@/app/components/SectionHeader'
@@ -143,12 +143,15 @@ function synthesize(
   }
 
   if (hasNoActivity) {
-    const daysSince = account.lastCsTouchpoint
-      ? Math.floor((Date.now() - account.lastCsTouchpoint.getTime()) / (1000 * 60 * 60 * 24))
+    const contact = lastContact(account)
+    const daysSince = contact
+      ? Math.floor((Date.now() - contact.at.getTime()) / (1000 * 60 * 60 * 24))
       : null
     return {
       title: `${account.name} — no activity`,
-      desc: daysSince !== null ? `No CS-initiated contact in ${daysSince} days` : 'No CS-initiated contact recorded',
+      desc: contact && daysSince !== null
+        ? `No contact in ${daysSince} days (last from ${contact.by === 'cs' ? 'CS' : 'the customer'})`
+        : 'No contact recorded',
       priority: 'Overdue',
       icon: 'activity',
     }

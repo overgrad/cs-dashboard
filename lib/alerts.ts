@@ -143,9 +143,8 @@ async function checkDivergenceAlert(
 async function checkInactivityAlerts(account: Account) {
   const now = Date.now()
 
-  // No CS activity isn't alerted per account. The account page shows it past
-  // THRESHOLDS.NO_ACTIVITY_ALERT_DAYS; the queue lists the account once there's been no CS
-  // touchpoint and no customer contact for that long.
+  // No contact isn't alerted per account. The account page and queue show it once there's
+  // been no CS touchpoint and no customer contact for THRESHOLDS.NO_ACTIVITY_ALERT_DAYS.
 
   // No product usage: no educator at the account has been active in the product for N days.
   // (Previously keyed off the SIS roster upload date, which is a yearly event, not usage.)

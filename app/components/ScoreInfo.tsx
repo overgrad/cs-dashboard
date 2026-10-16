@@ -12,8 +12,7 @@ const USAGE_DIMS = [
 ]
 
 const INTERACTIONS_DIMS = [
-  'Last CS-initiated touchpoint',
-  'Last customer contact',
+  'Last contact (CS or customer)',
   'Ticket volume trend',
   'Ticket sentiment',
   'Meeting sentiment',

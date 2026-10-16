@@ -1,5 +1,6 @@
 import type { Account } from '@/app/generated/prisma/client'
 import { THRESHOLDS } from './config'
+import { lastContact } from './flags'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -93,6 +94,15 @@ function scoreRecency(date: Date | null, label: string, weight: number): ScoreDi
   return { label, score, weight, value: `${ageDays} day${ageDays !== 1 ? 's' : ''} ago` }
 }
 
+// One dimension for contact in either direction, so an account whose customer keeps reaching
+// out isn't marked down for a quiet CS side. The value notes who initiated the last contact.
+function scoreLastContact(account: Account): ScoreDimension {
+  const contact = lastContact(account)
+  const dim = scoreRecency(contact?.at ?? null, 'Last contact', 0.4)
+  if (contact) dim.value = `${dim.value} · ${contact.by === 'cs' ? 'CS' : 'customer'}`
+  return dim
+}
+
 function scoreTicketTrend(trend: string | null): ScoreDimension {
   const label = 'Ticket volume trend'
   const weight = 0.15
@@ -138,8 +148,7 @@ export function computeUsageScore(account: Account): ScoreResult {
 
 export function computeInteractionsScore(account: Account): ScoreResult {
   const dims: ScoreDimension[] = [
-    scoreRecency(account.lastCsTouchpoint, 'Last CS-initiated touchpoint', 0.2),
-    scoreRecency(account.lastCustomerContact, 'Last customer contact', 0.2),
+    scoreLastContact(account),
     scoreTicketTrend(account.ticketVolumeTrend),
     scoreSentiment(account.ticketSentiment, 'Ticket sentiment', 0.15),
     scoreSentiment(account.meetingSentiment, 'Meeting sentiment', 0.2),

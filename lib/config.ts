@@ -49,7 +49,7 @@ export const THRESHOLDS = {
   RECENCY_GREEN_MONTHS: 2,    // was 1 — quarterly CS cadence is normal for healthy accounts
   RECENCY_YELLOW_MONTHS: 9,   // was 6 — 9 months without contact = genuinely at risk
   SCORE_DROP_ALERT_PTS: 10,
-  NO_ACTIVITY_ALERT_DAYS: envInt('NO_ACTIVITY_ALERT_DAYS', 90),  // no CS touchpoint (meeting, email, note, call, task) — flagged in the queue
+  NO_ACTIVITY_ALERT_DAYS: envInt('NO_ACTIVITY_ALERT_DAYS', 90),  // no contact either way (CS touchpoint or customer email/ticket) — flagged in the queue
   NO_USAGE_ALERT_DAYS: envInt('NO_USAGE_ALERT_DAYS', 30),        // no educator activity in the product
   CHAMPION_DARK_DAYS: envInt('CHAMPION_DARK_DAYS', 60),          // primary contact inactive in the product
 }
