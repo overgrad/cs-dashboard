@@ -2,9 +2,9 @@ import { THRESHOLDS } from './config'
 
 // Activity conditions shown on account and queue pages. No product usage and champion gone
 // dark mirror the Slack alerts, so CS sees them even when ALERTS_DISABLED turns those off;
-// no CS activity is only shown in the app (it no longer alerts in Slack).
+// no contact is only shown in the app (it no longer alerts in Slack).
 export interface ActivityFlags {
-  noCsActivityDays: number | null   // set when past THRESHOLDS.NO_ACTIVITY_ALERT_DAYS
+  noContactDays: number | null      // set when past THRESHOLDS.NO_ACTIVITY_ALERT_DAYS
   noProductUsageDays: number | null // set when past THRESHOLDS.NO_USAGE_ALERT_DAYS
   championDark: boolean
 }
@@ -12,15 +12,29 @@ export interface ActivityFlags {
 const daysSince = (d: Date | null, now: number) =>
   d ? Math.floor((now - d.getTime()) / (1000 * 60 * 60 * 24)) : null
 
+export interface LastContact {
+  at: Date
+  by: 'cs' | 'customer'
+}
+
+// Most recent contact in either direction. Any contact counts as engagement — who reached out
+// is shown but doesn't affect scoring or flags (CS decision 2026-10-16).
+export function lastContact(account: { lastCsTouchpoint: Date | null; lastCustomerContact: Date | null }): LastContact | null {
+  const { lastCsTouchpoint: cs, lastCustomerContact: customer } = account
+  if (!cs && !customer) return null
+  if (customer && (!cs || customer > cs)) return { at: customer, by: 'customer' }
+  return { at: cs!, by: 'cs' }
+}
+
 export function activityFlags(
-  account: { lastCsTouchpoint: Date | null; lastEducatorActivity: Date | null; championStatus: string | null },
+  account: { lastCsTouchpoint: Date | null; lastCustomerContact: Date | null; lastEducatorActivity: Date | null; championStatus: string | null },
   now: Date,
 ): ActivityFlags {
   const t = now.getTime()
-  const cs = daysSince(account.lastCsTouchpoint, t)
+  const contact = daysSince(lastContact(account)?.at ?? null, t)
   const usage = daysSince(account.lastEducatorActivity, t)
   return {
-    noCsActivityDays: cs !== null && cs >= THRESHOLDS.NO_ACTIVITY_ALERT_DAYS ? cs : null,
+    noContactDays: contact !== null && contact >= THRESHOLDS.NO_ACTIVITY_ALERT_DAYS ? contact : null,
     noProductUsageDays: usage !== null && usage >= THRESHOLDS.NO_USAGE_ALERT_DAYS ? usage : null,
     championDark: account.championStatus === 'gone_dark',
   }
