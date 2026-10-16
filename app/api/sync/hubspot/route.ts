@@ -4,6 +4,8 @@ import { getAllDeals, getOwner, getContact, getCompanyContacts, getAllCustomerCo
 import { HS_PROPS, THRESHOLDS } from '@/lib/config'
 import { computeArrForCompanies } from '@/lib/arr-hubspot'
 import { accountStatus } from '@/lib/flags'
+import { toStoredContacts } from '@/lib/contacts'
+import type { Prisma } from '@/app/generated/prisma/client'
 
 type Deal = Awaited<ReturnType<typeof getAllDeals>>[number]
 
@@ -217,7 +219,13 @@ export async function POST(request: Request) {
           arrBreakdown: arrInfo ? JSON.parse(JSON.stringify(arrInfo)) : undefined,
           arrAsOf: arrInfo ? new Date() : null,
           primaryContact: contact?.name ?? null,
+          primaryContactId: contact?.id ?? null,
           contactEmail: contact?.email ?? null,
+          contacts: toStoredContacts(
+            dealContact && !companyContacts.some((c) => c.id === dealContact.id)
+              ? [dealContact, ...companyContacts]
+              : companyContacts,
+          ) as unknown as Prisma.InputJsonValue,
           hasLineItems: primary ? deals.some((d) => dealsWithLineItems.has(d.id)) : (latestClosedWon?.hasLineItems ?? false),
           unpaidInvoiceCount,
           unpaidInvoiceBalance,
