@@ -8,6 +8,8 @@ import { OwnerFilter } from '@/app/components/OwnerFilter'
 import { SearchInput } from '@/app/components/SearchInput'
 import { CollapsibleSection } from '@/app/components/CollapsibleSection'
 import { OwnerAvatar } from '@/app/components/OwnerAvatar'
+import { HubspotLink } from '@/app/components/HubspotLink'
+import { getHubspotPortal, hubspotRecordUrl } from '@/lib/hubspot-links'
 
 function formatARR(n: number) {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`
@@ -74,6 +76,7 @@ export default async function RenewalsPage({
     )
   }
 
+  const portal = await getHubspotPortal()
   const now = new Date()
   const outstandingAccounts = accounts.filter((a) => a.renewalDate && a.renewalDate > now)
   const totalARR = outstandingAccounts.reduce((sum, a) => sum + (a.arr ?? 0), 0)
@@ -201,6 +204,10 @@ export default async function RenewalsPage({
                         !a.hasLineItems && 'Line items',
                         !a.primaryContact && 'Contact',
                       ].filter(Boolean)
+                      // Close date and line items are fixed on the deal; contacts on the company
+                      const fixUrl = !a.renewalDate || !a.hasLineItems
+                        ? hubspotRecordUrl(portal, 'deal', a.hubspotId)
+                        : hubspotRecordUrl(portal, 'company', a.companyId)
 
                       return (
                         <tr key={a.id} className="hover:bg-slate-50">
@@ -229,7 +236,7 @@ export default async function RenewalsPage({
                             ) : <span className="text-slate-400">—</span>}
                           </td>
                           <td className="px-4 py-3">
-                            <div className="flex flex-wrap gap-1">
+                            <div className="flex flex-wrap items-center gap-1">
                               {missing.map((m) => (
                                 <span
                                   key={m as string}
@@ -238,6 +245,9 @@ export default async function RenewalsPage({
                                   {m}
                                 </span>
                               ))}
+                              <span className="ml-1">
+                                <HubspotLink href={fixUrl}>Add in HubSpot</HubspotLink>
+                              </span>
                             </div>
                           </td>
                         </tr>

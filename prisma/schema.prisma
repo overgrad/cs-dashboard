@@ -25,7 +25,9 @@ model Account {
   arrBreakdown       Json?     @map("arr_breakdown")
   arrAsOf            DateTime? @map("arr_as_of")
   primaryContact String?   @map("primary_contact")
+  primaryContactId String? @map("primary_contact_id") // HubSpot contact ID of primaryContact
   contactEmail   String?   @map("contact_email")
+  contacts       Json?     // Every contact associated to the company: StoredContact[] (lib/contacts.ts)
   hasLineItems   Boolean   @default(false) @map("has_line_items")
   unpaidInvoiceCount   Int       @default(0) @map("unpaid_invoice_count")
   unpaidInvoiceBalance Float     @default(0) @map("unpaid_invoice_balance")
@@ -60,8 +62,28 @@ model Account {
   scoreHistory ScoreHistory[]
   alerts       Alert[]
   queueActions QueueAction[]
+  activities   Activity[]
 
   @@map("accounts")
+}
+
+// CS activity logged from the dashboard. Each row is written to HubSpot as an engagement
+// first (see lib/hubspot-activities.ts); hubspotId is that engagement's object ID.
+model Activity {
+  id          String   @id @default(cuid())
+  accountId   String   @map("account_id")
+  type        String   // 'call' | 'email' | 'meeting' | 'note' — the HubSpot engagement type
+  body        String
+  contactId   String?  @map("contact_id")   // HubSpot contact the engagement is associated with
+  contactName String?  @map("contact_name")
+  hubspotId   String?  @map("hubspot_id")
+  author      String
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, createdAt])
+  @@map("activities")
 }
 
 model QueueAction {

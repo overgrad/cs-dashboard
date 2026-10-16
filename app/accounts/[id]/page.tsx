@@ -3,13 +3,21 @@ export const dynamic = 'force-dynamic'
 import { prisma } from '@/lib/prisma'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import { CircleCheck } from 'lucide-react'
 import { computeUsageScore, computeInteractionsScore } from '@/lib/scoring'
 import { Sparkline } from '@/app/components/Sparkline'
 import { TabGroup } from '@/app/components/TabGroup'
 import type { DimScore } from '@/lib/scoring'
 import { ArrBreakdown } from '@/app/components/ArrBreakdown'
 import { SeatUsage } from '@/app/components/SeatUsage'
+import { RenewalCard } from '@/app/components/RenewalCard'
+import { ContactsCard } from '@/app/components/ContactsCard'
+import { HubspotLink } from '@/app/components/HubspotLink'
+import { ActivityComposer } from '@/app/components/ActivityComposer'
 import { activityFlags } from '@/lib/flags'
+import { contactLabel, readContacts } from '@/lib/contacts'
+import { getHubspotPortal, hubspotRecordUrl } from '@/lib/hubspot-links'
+import { ACTIVITY_LABEL, isActivityType } from '@/lib/activity-types'
 import type { CompanyArr } from '@/lib/arr'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -127,7 +135,7 @@ export default async function AccountPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const [account, scoreHistory, queueActions] = await Promise.all([
+  const [account, scoreHistory, queueActions, activities, portal] = await Promise.all([
     prisma.account.findUnique({ where: { id } }),
     prisma.scoreHistory.findMany({
       where: { accountId: id },
@@ -138,8 +146,17 @@ export default async function AccountPage({
       where: { accountId: id },
       orderBy: { createdAt: 'desc' },
     }),
+    prisma.activity.findMany({
+      where: { accountId: id },
+      orderBy: { createdAt: 'desc' },
+    }),
+    getHubspotPortal(),
   ])
   if (!account) notFound()
+
+  const companyUrl = hubspotRecordUrl(portal, 'company', account.companyId)
+  const dealUrl = hubspotRecordUrl(portal, 'deal', account.hubspotId)
+  const contacts = readContacts(account.contacts)
 
   const usage = computeUsageScore(account)
   const interactions = computeInteractionsScore(account)
@@ -238,29 +255,69 @@ export default async function AccountPage({
     dismiss: 'bg-slate-100 text-slate-600',
     snooze: 'bg-amber-100 text-amber-700',
   }
+  const ACTIVITY_COLOR: Record<string, string> = {
+    call: 'bg-blue-100 text-blue-700',
+    email: 'bg-violet-100 text-violet-700',
+    meeting: 'bg-teal-100 text-teal-700',
+    note: 'bg-slate-200 text-slate-700',
+  }
+  const shortDateTime = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  // Logged activities and queue actions share one feed, newest first
+  const feed = [
+    ...activities.map((a) => ({ kind: 'activity' as const, at: a.createdAt, a })),
+    ...queueActions.map((q) => ({ kind: 'queue' as const, at: q.createdAt, q })),
+  ].sort((x, y) => y.at.getTime() - x.at.getTime())
+
   const activityTab = (
-    <div className="py-2">
-      {queueActions.length === 0 ? (
-        <p className="text-sm text-slate-400">No actions logged yet.</p>
+    <div className="space-y-4 py-2">
+      <ActivityComposer
+        accountId={account.id}
+        contacts={contacts.map((c) => ({ id: c.id, label: contactLabel(c) }))}
+        canLog={!!account.companyId}
+      />
+      {feed.length === 0 ? (
+        <p className="text-sm text-slate-400">No activity logged yet.</p>
       ) : (
         <div className="space-y-3">
-          {queueActions.map((a) => (
-            <div key={a.id} className="flex items-start gap-3 rounded-lg border border-slate-100 bg-slate-50 p-3">
-              <span className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${ACTION_COLOR[a.type] ?? 'bg-slate-100 text-slate-600'}`}>
-                {ACTION_LABEL[a.type] ?? a.type}
-              </span>
-              <div className="min-w-0 flex-1">
-                {a.note && <p className="text-sm text-slate-700">{a.note}</p>}
-                <p className="mt-0.5 text-xs text-slate-400">
-                  {a.createdBy ? `${a.createdBy} · ` : ''}
-                  {a.createdAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                  {a.suppressUntil && a.suppressUntil > new Date()
-                    ? ` · snoozed until ${a.suppressUntil.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
-                    : ''}
-                </p>
+          {feed.map((item) =>
+            item.kind === 'activity' ? (
+              <div key={item.a.id} className="flex items-start gap-3 rounded-lg border border-slate-100 bg-slate-50 p-3">
+                <span className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${ACTIVITY_COLOR[item.a.type] ?? 'bg-slate-100 text-slate-600'}`}>
+                  {isActivityType(item.a.type) ? ACTIVITY_LABEL[item.a.type] : item.a.type}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="whitespace-pre-wrap text-sm text-slate-700">{item.a.body}</p>
+                  <p className="mt-0.5 flex flex-wrap items-center gap-x-1 text-xs text-slate-400">
+                    <span>
+                      {item.a.author} · {shortDateTime(item.a.createdAt)}
+                      {item.a.contactName ? ` · with ${item.a.contactName}` : ''}
+                    </span>
+                    {item.a.hubspotId && (
+                      <span className="inline-flex items-center gap-1 font-medium text-emerald-600">
+                        · <CircleCheck className="h-3 w-3" aria-hidden /> HubSpot synced
+                      </span>
+                    )}
+                  </p>
+                </div>
               </div>
-            </div>
-          ))}
+            ) : (
+              <div key={item.q.id} className="flex items-start gap-3 rounded-lg border border-slate-100 bg-slate-50 p-3">
+                <span className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${ACTION_COLOR[item.q.type] ?? 'bg-slate-100 text-slate-600'}`}>
+                  {ACTION_LABEL[item.q.type] ?? item.q.type}
+                </span>
+                <div className="min-w-0 flex-1">
+                  {item.q.note && <p className="text-sm text-slate-700">{item.q.note}</p>}
+                  <p className="mt-0.5 text-xs text-slate-400">
+                    {item.q.createdBy ? `${item.q.createdBy} · ` : ''}
+                    {shortDateTime(item.q.createdAt)}
+                    {item.q.suppressUntil && item.q.suppressUntil > new Date()
+                      ? ` · snoozed until ${item.q.suppressUntil.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+                      : ''}
+                  </p>
+                </div>
+              </div>
+            ),
+          )}
         </div>
       )}
     </div>
@@ -340,6 +397,9 @@ export default async function AccountPage({
               )}
             </div>
           </div>
+          <div className="shrink-0">
+            <HubspotLink href={companyUrl} variant="button">Open in HubSpot</HubspotLink>
+          </div>
         </div>
       </div>
 
@@ -356,6 +416,17 @@ export default async function AccountPage({
           score={interactions.score}
           trend={interactionsTrend}
           spark={sparkInteractions}
+        />
+      </div>
+
+      {/* Renewal + contacts */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <RenewalCard account={account} dealUrl={dealUrl} />
+        <ContactsCard
+          contacts={contacts}
+          primaryContactId={account.primaryContactId}
+          companyUrl={companyUrl}
+          portal={portal}
         />
       </div>
 

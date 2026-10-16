@@ -38,7 +38,7 @@ Heroku Scheduler only supports every-10-minutes, hourly and daily frequencies, s
 | `NEXT_PUBLIC_APP_URL` | Public base URL, used for links in Slack messages |
 | `CRON_SECRET` | Bearer token for `/api/cron/daily` |
 | `SYNC_SECRET` | Bearer token for the `/api/sync/*` and `/api/score/run` endpoints |
-| `HUBSPOT_ACCESS_TOKEN` | HubSpot private app token |
+| `HUBSPOT_ACCESS_TOKEN` | HubSpot private app token. Needs `crm.objects.contacts.write` for logging activity from the account page; links into HubSpot use the portal ID from the account-info API |
 | `FRESHDESK_API_KEY`, `FRESHDESK_SUBDOMAIN` | Freshdesk ticket sync |
 | `ANTHROPIC_API_KEY` | Ticket/note sentiment (optional; skipped when unset) |
 | `SLACK_BOT_TOKEN` | Slack alerts |
